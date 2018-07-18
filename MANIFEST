@@ -1,0 +1,2 @@
+recursive-include sparse_vi/data *csv *p
+include *txt
