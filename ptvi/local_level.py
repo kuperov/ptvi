@@ -4,17 +4,18 @@ from time import time
 import matplotlib.pyplot as plt
 from ptvi.stopping import *
 from ptvi.dist import InvGamma
+import numpy as np
 
 
 class LocalLevelModel(object):
     # approximating density: q(u, LL')
 
-    def __init__(self, τ: int, stoch_entropy: bool = False,
+    def __init__(self, τ: int, num_draws = 1,
+                 stoch_entropy: bool = False,
                  γ_prior: Distribution = None, η_prior: Distribution = None,
                  σ_prior: Distribution = None, ρ_prior: Distribution = None):
-        self.τ = τ
-        self.stoch_entropy = stoch_entropy
-        self.d = self.τ + 4
+        self.τ, self.d = τ, τ + 4
+        self.stoch_entropy, self.num_draws = stoch_entropy, num_draws
 
         # q(ζ): dense matrices are inefficient but we'll keep τ small for now
         self.u = torch.tensor(torch.zeros(self.d), requires_grad=True)
@@ -40,9 +41,10 @@ class LocalLevelModel(object):
         self.ς_prior = TransformedDistribution(self.σ_prior, self.ς_to_σ.inv)
 
     def elbo_hat(self, y):
-        L = torch.tril(self.L)
-        ζ = self.u + L@torch.randn((self.d,))
+        L = torch.tril(self.L)  # force gradients for L to be lower triangular
         _τ = self.τ
+        ζ = self.u + L@torch.randn((self.d,))  # r16n trick
+
         z, γ, ψ, ς, φ = ζ[:_τ], ζ[_τ], ζ[_τ + 1], ζ[_τ + 2], ζ[_τ + 3]
 
         # transform from optimization to user coordinates
@@ -72,8 +74,8 @@ class LocalLevelModel(object):
 
     def training_loop(self, y,
                       max_iters: int = 2**20,
-                      stop_crit: EarlyStoppingHeuristic = None) -> None:
-        stop_crit = stop_crit or TrailingAverageEarlyStoppingHeuristic(50,50,.1)
+                      stop_crit: StoppingHeuristic = None) -> None:
+        stop_crit = stop_crit or ExponentialStoppingHeuristic(50, 50, .1)
         t, elbo_hats, objective = -time(), [], 0.
         optimizer = torch.optim.Adadelta(self.parameters())
         for i in range(max_iters):
@@ -238,15 +240,15 @@ class LocalLevelModel(object):
 
 if __name__ == '__main__' and '__file__' in globals():
     torch.manual_seed(123)
-    m = LocalLevelModel(τ=100)
+    m = LocalLevelModel(τ=100, stoch_entropy=False)
     y, z = m.simulate(γ=0., η=2., σ=1.5, ρ=0.98)
     fit = m.training_loop(y, max_iters=2**20)
     print(fit.summary())
-    fit.plot_latent(true_z=z.numpy(), include_data=True)
-    plt.show()
-    fit.plot_elbos()
-    plt.show()
-    fit.plot_sampled_paths(200, true_y=y, fc_steps=10)
-    plt.show()
-    fit.plot_pred_ci(true_y=y, fc_steps=10)
-    plt.show()
+    # fit.plot_latent(true_z=z.numpy(), include_data=True)
+    # plt.show()
+    # fit.plot_elbos()
+    # plt.show()
+    # fit.plot_sampled_paths(200, true_y=y, fc_steps=10)
+    # plt.show()
+    # fit.plot_pred_ci(true_y=y, fc_steps=10)
+    # plt.show()
