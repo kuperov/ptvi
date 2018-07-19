@@ -1,22 +1,28 @@
-import numpy as np
+from typing import List
 
 
-class EarlyStoppingHeuristic(object):
+class StoppingHeuristic(object):
     """Abstract class for early stopping heuristic.
     """
 
     def early_stop(self, est_elbo: float) -> bool:
         raise NotImplementedError
 
+    def __str__(self):
+        raise NotImplementedError
 
-class NullEarlyStoppingHeuristic(EarlyStoppingHeuristic):
+
+class NullStoppingHeuristic(StoppingHeuristic):
     """Null heuristic that never stops inference early."""
 
     def early_stop(self, est_elbo: float):
         return False
 
+    def __str__(self):
+        print('Null stopping heuristic (never fires)')
 
-class TrailingAverageEarlyStoppingHeuristic(EarlyStoppingHeuristic):
+
+class ExponentialStoppingHeuristic(StoppingHeuristic):
     """Implements trailing average early stopping heuristic.
 
     Every N iterations, computes an exponentially-weighted average of the
@@ -24,11 +30,11 @@ class TrailingAverageEarlyStoppingHeuristic(EarlyStoppingHeuristic):
     returns true. A 'true' return can't happen before 2*N*M iterations.
     """
 
-    def __init__(self, N: int, M: int, α: int=0.05):
+    def __init__(self, N: int, M: int, α: float=0.05):
         assert 0. < α <= 1.
         self.N, self.M, self.α = N, M, α
         self.i = -1
-        self.circular_buffer = [None] * M
+        self.circular_buffer: List[float] = [None] * M
         self.curr_elbo, self.past_elbo = None, None
 
     def early_stop(self, est_elbo: float) -> bool:
@@ -45,3 +51,7 @@ class TrailingAverageEarlyStoppingHeuristic(EarlyStoppingHeuristic):
             if self.circular_buffer[buf_idx] > self.curr_elbo:
                 return True  # stahp!
         self.circular_buffer[buf_idx] = self.curr_elbo
+
+    def __str__(self):
+        print(f'Exponential stopping heuristic (N={self.N}, M={self.M}, '
+              f'α={self.α})')

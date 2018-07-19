@@ -8,3 +8,4 @@ dist
 sparse_vi.egg-info
 sparse_vi/__pycache__
 .Rproj.user
+**/__pycache__
