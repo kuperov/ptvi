@@ -2,8 +2,8 @@ import torch
 from torch.distributions import *
 from time import time
 import matplotlib.pyplot as plt
-from ptvi.early_stopping import *
-from ptvi.dists import InvGamma
+from ptvi.stopping import *
+from ptvi.dist import InvGamma
 
 
 class LocalLevelModel(object):
