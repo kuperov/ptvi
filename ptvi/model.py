@@ -111,14 +111,15 @@ class VIResult(object):
         plt.plot(self.y.numpy(), label='data')
         plt.title('Data')
 
-    def plot_marg(self, variable: str, true_val: float=None, **kwargs):
-        post_key, prior_key = f'$p({variable} | y)$', f'$p({variable})$'
+    def plot_marg(self, variable: str, suffix='', true_val: float=None, **kwargs):
+        post_key = f'$p({variable}{suffix} | y)$'
+        prior_key = f'$p({variable}{suffix})$'
         args = {
             prior_key: getattr(self, f'{variable}_prior'),
             post_key: getattr(self, f'{variable}_marg_post')
         }
         if true_val is not None:
-            args[f'${variable}_0$'] = true_val
+            args[f'${variable}{suffix}_0$'] = true_val
         if kwargs:
             args.update(kwargs)
         # figure out range by sampling from posterior

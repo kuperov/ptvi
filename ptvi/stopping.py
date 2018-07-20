@@ -19,7 +19,7 @@ class NullStoppingHeuristic(StoppingHeuristic):
         return False
 
     def __str__(self):
-        print('Null stopping heuristic (never fires)')
+        return 'Null stopping heuristic (never fires)'
 
 
 class ExponentialStoppingHeuristic(StoppingHeuristic):

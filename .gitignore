@@ -1,6 +1,5 @@
 .idea
 venv
-**/__pycache
 elbo_grease.egg-info
 docs/.ipynb_checkpoints
 build
@@ -8,4 +7,4 @@ dist
 sparse_vi.egg-info
 sparse_vi/__pycache__
 .Rproj.user
-**/__pycache__
+**/*.pyc

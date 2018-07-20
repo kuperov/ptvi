@@ -7,5 +7,5 @@ setup(name='ptvi',
       description='VI with sparse precision matrices',
       packages=['ptvi'],
       install_requires=[
-          'pytorch', 'numpy', 'pandas', 'matplotlib'
+          'torch', 'numpy', 'pandas', 'matplotlib'
       ])
