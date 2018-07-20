@@ -150,7 +150,8 @@ class VIModel(object):
     def simulate(self, *args, quiet=False):
         raise NotImplementedError
 
-    def training_loop(self, y, max_iters: int = 2**20, λ=0.1, quiet=False):
+    def training_loop(self, y, max_iters: int = 2**20, λ=0.1, quiet=False,
+                      optimizer=None):
         """Train the model using VI.
 
         Args:
@@ -159,11 +160,12 @@ class VIModel(object):
             λ: exponential smoothing parameter for displaying estimated elbo
                (display only; does not affect the optimization)
             quiet: suppress output
+            optimizer: override optimizer
 
         Returns:
             A VariationalResults object with the approximate posterior.
         """
-        optimizer = torch.optim.RMSprop(self.parameters)
+        optimizer = optimizer or torch.optim.RMSprop(self.parameters)
         if not quiet:
             print(f'{"="*80}')
             print(str(self))
@@ -174,7 +176,7 @@ class VIModel(object):
                 print(f'    group {i}. {desc}')
             print(f'\nDisplayed loss is smoothed with λ={λ}')
             print(f'{"="*80}')
-        t = -time()
+        t, i = -time(), 0
         elbo_hats = []
         smoothed_elbo_hat = -self.elbo_hat(y)
         for i in range(max_iters):
@@ -192,8 +194,8 @@ class VIModel(object):
         else:
             if not quiet: print('WARNING: maximum iterations reached.')
         t += time()
-        self.print_status(i+1, smoothed_elbo_hat)
         if not quiet:
+            self.print_status(i + 1, smoothed_elbo_hat)
             r = i/(t+1)
             print(f'Completed {i+1} iterations in {t:.1f}s @ {r:.2f} i/s.')
             print(f'{"="*80}')

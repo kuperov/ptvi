@@ -12,14 +12,19 @@ class LocalLevelModel(object):
 
     def __init__(self, τ: int, num_draws = 1,
                  stoch_entropy: bool = False,
+                 stop_heur: StoppingHeuristic = None,
                  γ_prior: Distribution = None, η_prior: Distribution = None,
-                 σ_prior: Distribution = None, ρ_prior: Distribution = None):
+                 σ_prior: Distribution = None, ρ_prior: Distribution = None,
+                 ):
         self.τ, self.d = τ, τ + 4
         self.stoch_entropy, self.num_draws = stoch_entropy, num_draws
+
+        self.stop_heur = stop_heur or ExponentialStoppingHeuristic(50, 50)
 
         # q(ζ): dense matrices are inefficient but we'll keep τ small for now
         self.u = torch.tensor(torch.zeros(self.d), requires_grad=True)
         self.L = torch.tensor(torch.eye(self.d), requires_grad=True)
+        self.parameters = [self.u, self.L]
 
         # priors are defined wrt user coordinates
         self.γ_prior = γ_prior or Normal(0, 3)
@@ -43,57 +48,89 @@ class LocalLevelModel(object):
     def elbo_hat(self, y):
         L = torch.tril(self.L)  # force gradients for L to be lower triangular
         _τ = self.τ
-        ζ = self.u + L@torch.randn((self.d,))  # r16n trick
-
-        z, γ, ψ, ς, φ = ζ[:_τ], ζ[_τ], ζ[_τ + 1], ζ[_τ + 2], ζ[_τ + 3]
-
-        # transform from optimization to user coordinates
-        η, σ, ρ = self.ψ_to_η(ψ), self.ς_to_σ(ς), self.φ_to_ρ(φ)
-
-        # log joint = log likelihood + log prior
-        ar1_var = torch.pow((1 - torch.pow(ρ, 2)), -0.5)
-        log_likelihood = (
-            Normal(γ + η * z, σ).log_prob(y).sum()
-            + Normal(ρ * z[:-1], 1).log_prob(z[1:]).sum()
-            + Normal(0., ar1_var).log_prob(z[0])
-        )
-        log_prior = (
-            self.γ_prior.log_prob(γ)
-            + self.η_prior.log_prob(η)
-            + self.ς_prior.log_prob(ς)
-            + self.φ_prior.log_prob(φ)
-        )
-
+        E_ln_lik_hat, E_ln_pr_hat, H_q_hat = 0., 0., 0.  # accumulators
         q = MultivariateNormal(loc=self.u, scale_tril=L)
-        entropy_hat = q.log_prob(ζ) if self.stoch_entropy else q.entropy()
 
-        return log_likelihood + log_prior - entropy_hat
+        for _ in range(self.num_draws):
+            ζ = self.u + L@torch.randn((self.d,))  # r16n trick
 
-    def parameters(self):
-        return [self.u, self.L]
+            z, γ, ψ, ς, φ = ζ[:_τ], ζ[_τ], ζ[_τ + 1], ζ[_τ + 2], ζ[_τ + 3]
 
-    def training_loop(self, y,
-                      max_iters: int = 2**20,
-                      stop_crit: StoppingHeuristic = None) -> None:
-        stop_crit = stop_crit or ExponentialStoppingHeuristic(50, 50, .1)
-        t, elbo_hats, objective = -time(), [], 0.
-        optimizer = torch.optim.Adadelta(self.parameters())
+            # transform from optimization to user coordinates
+            η, σ, ρ = self.ψ_to_η(ψ), self.ς_to_σ(ς), self.φ_to_ρ(φ)
+
+            # log joint = log likelihood + log prior
+            ar1_var = torch.pow((1 - torch.pow(ρ, 2)), -0.5)
+            log_likelihood = (
+                Normal(γ + η * z, σ).log_prob(y).sum()
+                + Normal(ρ * z[:-1], 1).log_prob(z[1:]).sum()
+                + Normal(0., ar1_var).log_prob(z[0])
+            )
+            E_ln_lik_hat += log_likelihood/self.num_draws
+            log_prior = (
+                self.γ_prior.log_prob(γ)
+                + self.η_prior.log_prob(η)
+                + self.ς_prior.log_prob(ς)
+                + self.φ_prior.log_prob(φ)
+            )
+            E_ln_pr_hat += log_prior/self.num_draws
+
+            if self.stoch_entropy:
+                H_q_hat += q.log_prob(ζ)/self.num_draws
+
+        if not self.stoch_entropy:
+            H_q_hat = q.entropy()
+
+        return E_ln_lik_hat + E_ln_pr_hat - H_q_hat
+
+    def training_loop(self, y, max_iters: int = 2 ** 20, λ=0.1, quiet=False,
+                      optimizer=None):
+        """Train the model using VI.
+
+        Args:
+            y: (a 1-tensor) data vector
+            max_iters: maximum number of iterations
+            λ: exponential smoothing parameter for displaying estimated elbo
+               (display only; does not affect the optimization)
+            quiet: suppress output
+            optimizer: override optimizer
+
+        Returns:
+            A VariationalResults object with the approximate posterior.
+        """
+        optimizer = optimizer or torch.optim.RMSprop(self.parameters)
+        if not quiet:
+            print(f'{"="*80}')
+            print(str(self))
+            print(f'\n{type(optimizer).__name__} optimizer with param groups:')
+            for i, pg in enumerate(optimizer.param_groups):
+                desc = ', '.join(f'{k}={v}' for k, v in pg.items()
+                                 if k != 'params')
+                print(f'    group {i}. {desc}')
+            print(f'\nDisplayed loss is smoothed with λ={λ}')
+            print(f'{"="*80}')
+        t, elbo_hats, smoothed_elbo_hat, i = -time(), [], 0., 0
+        optimizer = torch.optim.Adadelta(self.parameters)
         for i in range(max_iters):
             optimizer.zero_grad()
             objective = -self.elbo_hat(y)
+            smoothed_elbo_hat = - λ*objective - (1-λ)*smoothed_elbo_hat
             objective.backward()
             optimizer.step()
             elbo_hats.append(-objective)
             if not i & (i - 1):
-                print(f'{i: 8d}. ll ={-objective:8.2f}')
-            if stop_crit.early_stop(-objective):
+                print(f'{i: 8d}. smoothed elbo_hat ={smoothed_elbo_hat:8.2f}')
+            if self.stop_heur.early_stop(-objective):
                 print('Early stopping criterion satisfied.')
                 break
         else:
-            print('WARNING: maximum iterations reached')
+            if not quiet: print('WARNING: maximum iterations reached.')
         t += time()
-        print(f'{i: 8d}. ll ={-objective:8.2f}')
-        print(f'Completed {i+1} iterations in {t:.2f}s @ {i/(t+1):.2f} i/s.')
+        if not quiet:
+            print(f'{i: 8d}. smoothed elbo_hat ={smoothed_elbo_hat:8.2f}')
+            r = i/(t+1)
+            print(f'Completed {i+1} iterations in {t:.1f}s @ {r:.2f} i/s.')
+            print(f'{"="*80}')
         return type(self).Results(self, y, elbo_hats)
 
     def simulate(self, γ: float, η: float, σ: float, ρ: float):
@@ -127,6 +164,14 @@ class LocalLevelModel(object):
                 z[t] = z[t-1]*ρ + Normal(0, 1).sample()
             paths[i, :] = Normal(γ + η*z, σ).sample()
         return paths
+
+    def __str__(self):
+        entr = 'stochastic' if self.stoch_entropy else 'analytic'
+        draw_s = 's' if self.num_draws > 1 else ''
+        return (f"Local level model with τ={self.τ}:\n"
+                f"    - {entr} entropy;\n"
+                f"    - {self.num_draws} simulation draw{draw_s};\n"
+                f"    - {str(self.stop_heur)}")
 
     class Results(object):
 
@@ -240,7 +285,7 @@ class LocalLevelModel(object):
 
 if __name__ == '__main__' and '__file__' in globals():
     torch.manual_seed(123)
-    m = LocalLevelModel(τ=100, stoch_entropy=False)
+    m = LocalLevelModel(τ=100, stoch_entropy=False, num_draws=10)
     y, z = m.simulate(γ=0., η=2., σ=1.5, ρ=0.98)
     fit = m.training_loop(y, max_iters=2**20)
     print(fit.summary())
