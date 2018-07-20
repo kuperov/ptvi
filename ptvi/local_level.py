@@ -4,20 +4,137 @@ from time import time
 import matplotlib.pyplot as plt
 from ptvi.stopping import *
 from ptvi.dist import InvGamma
+from ptvi import VIModel
 import numpy as np
 
 
-class LocalLevelModel(object):
+class _LocalLevelResult(object):
+
+    def __init__(self, model, elbo_hats, y):
+        self.model, self.y, self.elbos = model, y, elbo_hats
+        self.u, self.L = model.u.detach(), model.L.detach()
+        # posteriors are transformed from normal distributions
+        Σ = self.L @ (self.L.t())
+        sds = torch.sqrt(torch.diag(Σ))
+        self.γ_marg_post = Normal(self.u[self.τ], sds[self.τ])
+        self.η_marg_post = TransformedDistribution(
+            Normal(self.u[self.τ + 1], sds[self.τ + 1]), model.ψ_to_η)
+        self.σ_marg_post = TransformedDistribution(
+            Normal(self.u[self.τ + 2], sds[self.τ + 2]), model.ς_to_σ)
+        self.ρ_marg_post = TransformedDistribution(
+            Normal(self.u[self.τ + 3], sds[self.τ + 3]), model.φ_to_ρ)
+
+    def __getattr__(self, item):
+        return getattr(self.model, item, None)
+
+    def summary(self):
+        import pandas as pd
+        # transform and simulate from marginal transformed parameters
+        params = ['γ', 'η', 'σ', 'ρ']
+        means, sds = [], []
+        for param in params:
+            post = getattr(self, f'{param}_marg_post')
+            if isinstance(post, Normal):
+                means.append(float(post.loc.numpy()))
+                sds.append(float(post.scale.numpy()))
+            else:  # simulate non-gaussian posteriors
+                xs = post.sample((100,)).numpy()
+                means.append(np.mean(xs))
+                sds.append(np.std(xs))
+        return pd.DataFrame({'mean': means, 'sd': sds}, index=params)
+
+    def sds(self):
+        Σ = self.L @ (self.L.t())
+        return torch.sqrt(torch.diag(Σ)).numpy()
+
+    def plot_sampled_paths(self, N=50, fc_steps=0, true_y=None):
+        paths = self.model.sample_paths(N, fc_steps=fc_steps)
+        plt.figure()
+        xs, fxs = range(self.τ), range(self.τ + fc_steps)
+        for i in range(N):
+            plt.plot(fxs, paths[i, :].numpy(), linewidth=0.5, alpha=0.5)
+        if fc_steps > 0:
+            plt.axvline(x=self.τ, color='black')
+            plt.title(f'{N} posterior samples and {fc_steps}-step forecast')
+        else:
+            plt.title(f'{N} posterior samples')
+        if true_y is not None:
+            plt.plot(xs, true_y.numpy(), color='black', linewidth=2,
+                label='y')
+            plt.legend()
+
+    def plot_pred_ci(self, N: int = 100, α: float = 0.05, true_y=None,
+                     fc_steps: int = 0):
+        paths = self.model.sample_paths(N, fc_steps=fc_steps)
+        ci_bands = np.empty([self.τ + fc_steps, 2])
+        fxs, xs = range(self.τ + fc_steps), range(self.τ)
+        perc = 100 * np.array([α * 0.5, 1. - α * 0.5])
+        for t in fxs:
+            ci_bands[t, :] = np.percentile(paths[:, t], q=perc)
+        plt.figure()
+        plt.fill_between(fxs, ci_bands[:, 0], ci_bands[:, 1], alpha=0.5,
+            label=f'{(1-α)*100:.0f}% CI')
+        if true_y is not None:
+            plt.plot(xs, true_y.numpy(), color='black', linewidth=2,
+                label='y')
+            plt.legend()
+        if fc_steps > 0:
+            plt.axvline(x=self.τ, color='black')
+            plt.title(f'Posterior credible interval and '
+                      f'{fc_steps}-step-ahead forecast')
+        else:
+            plt.title(f'Posterior credible interval')
+
+    def plot_elbos(self):
+        plt.figure()
+        plt.plot(self.elbos)
+        plt.title(r'$\hat L$ by iteration')
+
+    def plot_latent(self, true_z=None, include_data=False):
+        plt.figure()
+        zs = self.u[:-4].numpy()
+        xs = torch.arange(len(zs)).numpy()
+        sds = self.sds()[:-4]
+        if include_data:
+            plt.subplot(211)
+            plt.plot(xs, self.y.numpy())
+            plt.title('Observed data')
+            plt.subplot(212)
+        plt.plot(xs, zs, label=r'$E[z_{1:\tau} | y]$')
+        plt.fill_between(xs, zs - sds, zs + sds, label=r'$\pm$ 1 SD',
+            color='blue', alpha=0.1)
+        plt.title('Latent state')
+        if true_z is not None:
+            plt.plot(xs, true_z, label=r'$z_{0,1:\tau}$')
+        plt.legend()
+        plt.tight_layout()
+
+    def plot_data(self):
+        plt.figure()
+        plt.plot(self.y.numpy(), label='data')
+        plt.title('Data')
+
+    def __repr__(self):
+        return repr(self.summary())
+
+
+class LocalLevelModel(VIModel):
     # approximating density: q(u, LL')
 
-    def __init__(self, τ: int, num_draws = 1,
-                 stoch_entropy: bool = False,
+    result_class = _LocalLevelResult
+    global_params = ['γ', 'η', 'σ', 'ρ']
+    transformed_params = {'η': 'ψ', 'σ': 'ς', 'ρ': 'φ'}
+
+    def __init__(self, τ: int,
+                 num_draws = 1,
+                 stochastic_entropy: bool = False,
                  stop_heur: StoppingHeuristic = None,
-                 γ_prior: Distribution = None, η_prior: Distribution = None,
-                 σ_prior: Distribution = None, ρ_prior: Distribution = None,
+                 γ_prior: Distribution = None,
+                 η_prior: Distribution = None,
+                 σ_prior: Distribution = None,
+                 ρ_prior: Distribution = None,
                  ):
         self.τ, self.d = τ, τ + 4
-        self.stoch_entropy, self.num_draws = stoch_entropy, num_draws
 
         self.stop_heur = stop_heur or ExponentialStoppingHeuristic(50, 50)
 
@@ -40,98 +157,42 @@ class LocalLevelModel(object):
             AffineTransform(0, 1), SigmoidTransform(), AffineTransform(-1, 2)
         ])
 
-        # transformed priors automatically include Jacobian transformations
-        self.ψ_prior = TransformedDistribution(self.η_prior, self.ψ_to_η.inv)
-        self.φ_prior = TransformedDistribution(self.ρ_prior, self.φ_to_ρ.inv)
-        self.ς_prior = TransformedDistribution(self.σ_prior, self.ς_to_σ.inv)
+        super().__init__(num_draws=num_draws,
+            stochastic_entropy=stochastic_entropy,
+            stop_heur=stop_heur)
 
     def elbo_hat(self, y):
         L = torch.tril(self.L)  # force gradients for L to be lower triangular
         _τ = self.τ
         E_ln_lik_hat, E_ln_pr_hat, H_q_hat = 0., 0., 0.  # accumulators
+
         q = MultivariateNormal(loc=self.u, scale_tril=L)
+        if not self.stochastic_entropy:
+            H_q_hat = q.entropy()
 
         for _ in range(self.num_draws):
-            ζ = self.u + L@torch.randn((self.d,))  # r16n trick
-
+            ζ = self.u + L@torch.randn((self.d,))  # reparam trick
             z, γ, ψ, ς, φ = ζ[:_τ], ζ[_τ], ζ[_τ + 1], ζ[_τ + 2], ζ[_τ + 3]
-
             # transform from optimization to user coordinates
             η, σ, ρ = self.ψ_to_η(ψ), self.ς_to_σ(ς), self.φ_to_ρ(φ)
-
-            # log joint = log likelihood + log prior
-            ar1_var = torch.pow((1 - torch.pow(ρ, 2)), -0.5)
-            log_likelihood = (
+            ar1_uncond_var = torch.pow((1 - torch.pow(ρ, 2)), -0.5)
+            llikelihood = (
                 Normal(γ + η * z, σ).log_prob(y).sum()
                 + Normal(ρ * z[:-1], 1).log_prob(z[1:]).sum()
-                + Normal(0., ar1_var).log_prob(z[0])
+                + Normal(0., ar1_uncond_var).log_prob(z[0])
             )
-            E_ln_lik_hat += log_likelihood/self.num_draws
-            log_prior = (
+            E_ln_lik_hat += llikelihood/self.num_draws
+            lprior = (
                 self.γ_prior.log_prob(γ)
                 + self.η_prior.log_prob(η)
                 + self.ς_prior.log_prob(ς)
                 + self.φ_prior.log_prob(φ)
             )
-            E_ln_pr_hat += log_prior/self.num_draws
-
-            if self.stoch_entropy:
+            E_ln_pr_hat += lprior/self.num_draws
+            if self.stochastic_entropy:
                 H_q_hat += q.log_prob(ζ)/self.num_draws
 
-        if not self.stoch_entropy:
-            H_q_hat = q.entropy()
-
         return E_ln_lik_hat + E_ln_pr_hat - H_q_hat
-
-    def training_loop(self, y, max_iters: int = 2 ** 20, λ=0.1, quiet=False,
-                      optimizer=None):
-        """Train the model using VI.
-
-        Args:
-            y: (a 1-tensor) data vector
-            max_iters: maximum number of iterations
-            λ: exponential smoothing parameter for displaying estimated elbo
-               (display only; does not affect the optimization)
-            quiet: suppress output
-            optimizer: override optimizer
-
-        Returns:
-            A VariationalResults object with the approximate posterior.
-        """
-        optimizer = optimizer or torch.optim.RMSprop(self.parameters)
-        if not quiet:
-            print(f'{"="*80}')
-            print(str(self))
-            print(f'\n{type(optimizer).__name__} optimizer with param groups:')
-            for i, pg in enumerate(optimizer.param_groups):
-                desc = ', '.join(f'{k}={v}' for k, v in pg.items()
-                                 if k != 'params')
-                print(f'    group {i}. {desc}')
-            print(f'\nDisplayed loss is smoothed with λ={λ}')
-            print(f'{"="*80}')
-        t, elbo_hats, smoothed_elbo_hat, i = -time(), [], 0., 0
-        optimizer = torch.optim.Adadelta(self.parameters)
-        for i in range(max_iters):
-            optimizer.zero_grad()
-            objective = -self.elbo_hat(y)
-            smoothed_elbo_hat = - λ*objective - (1-λ)*smoothed_elbo_hat
-            objective.backward()
-            optimizer.step()
-            elbo_hats.append(-objective)
-            if not i & (i - 1):
-                print(f'{i: 8d}. smoothed elbo_hat ={smoothed_elbo_hat:8.2f}')
-            if self.stop_heur.early_stop(-objective):
-                print('Early stopping criterion satisfied.')
-                break
-        else:
-            if not quiet: print('WARNING: maximum iterations reached.')
-        t += time()
-        if not quiet:
-            print(f'{i: 8d}. smoothed elbo_hat ={smoothed_elbo_hat:8.2f}')
-            r = i/(t+1)
-            print(f'Completed {i+1} iterations in {t:.1f}s @ {r:.2f} i/s.')
-            print(f'{"="*80}')
-        return type(self).Results(self, y, elbo_hats)
 
     def simulate(self, γ: float, η: float, σ: float, ρ: float):
         z = torch.empty([self.τ])
@@ -166,131 +227,28 @@ class LocalLevelModel(object):
         return paths
 
     def __str__(self):
-        entr = 'stochastic' if self.stoch_entropy else 'analytic'
+        entr = 'stochastic' if self.stochastic_entropy else 'analytic'
         draw_s = 's' if self.num_draws > 1 else ''
         return (f"Local level model with τ={self.τ}:\n"
                 f"    - {entr} entropy;\n"
                 f"    - {self.num_draws} simulation draw{draw_s};\n"
                 f"    - {str(self.stop_heur)}")
 
-    class Results(object):
-
-        def __init__(self, model, y, elbos):
-            self.model, self.y, self.elbos = model, y, elbos
-            self.u, self.L = model.u.detach(), model.L.detach()
-            # posteriors are transformed from normal distributions
-            Σ = self.L @ (self.L.t())
-            sds = torch.sqrt(torch.diag(Σ))
-            self.γ_marg_post = Normal(self.u[self.τ], sds[self.τ])
-            self.η_marg_post = TransformedDistribution(
-                Normal(self.u[self.τ+1], sds[self.τ+1]), model.ψ_to_η)
-            self.σ_marg_post = TransformedDistribution(
-                Normal(self.u[self.τ+2], sds[self.τ+2]), model.ς_to_σ)
-            self.ρ_marg_post = TransformedDistribution(
-                Normal(self.u[self.τ+3], sds[self.τ+3]), model.φ_to_ρ)
-
-        def __getattr__(self, item):
-            return getattr(self.model, item, None)
-
-        def summary(self):
-            import pandas as pd
-            # transform and simulate from marginal transformed parameters
-            params = ['γ', 'η', 'σ', 'ρ']
-            means, sds = [], []
-            for param in params:
-                post = getattr(self, f'{param}_marg_post')
-                if isinstance(post, Normal):
-                    means.append(float(post.loc.numpy()))
-                    sds.append(float(post.scale.numpy()))
-                else:  # simulate non-gaussian posteriors
-                    xs = post.sample((100,)).numpy()
-                    means.append(np.mean(xs))
-                    sds.append(np.std(xs))
-            return pd.DataFrame({'mean': means, 'sd': sds}, index=params)
-
-        def sds(self):
-            Σ = self.L@(self.L.t())
-            return torch.sqrt(torch.diag(Σ)).numpy()
-
-        def plot_sampled_paths(self, N=50, fc_steps=0, true_y=None):
-            paths = self.model.sample_paths(N, fc_steps=fc_steps)
-            plt.figure()
-            xs, fxs = range(self.τ), range(self.τ+fc_steps)
-            for i in range(N):
-                plt.plot(fxs, paths[i, :].numpy(), linewidth=0.5, alpha=0.5)
-            if fc_steps > 0:
-                plt.axvline(x=self.τ, color='black')
-                plt.title(f'{N} posterior samples and {fc_steps}-step forecast')
-            else:
-                plt.title(f'{N} posterior samples')
-            if true_y is not None:
-                plt.plot(xs, true_y.numpy(), color='black', linewidth=2,
-                         label='y')
-                plt.legend()
-
-        def plot_pred_ci(self, N: int = 100, α: float = 0.05, true_y=None,
-                         fc_steps: int = 0):
-            paths = self.model.sample_paths(N, fc_steps=fc_steps)
-            ci_bands = np.empty([self.τ+fc_steps, 2])
-            fxs, xs = range(self.τ+fc_steps), range(self.τ)
-            perc = 100 * np.array([α * 0.5, 1. - α * 0.5])
-            for t in fxs:
-                ci_bands[t, :] = np.percentile(paths[:, t], q=perc)
-            plt.figure()
-            plt.fill_between(fxs, ci_bands[:, 0], ci_bands[:, 1], alpha=0.5,
-                             label=f'{(1-α)*100:.0f}% CI')
-            if true_y is not None:
-                plt.plot(xs, true_y.numpy(), color='black', linewidth=2,
-                         label='y')
-                plt.legend()
-            if fc_steps > 0:
-                plt.axvline(x=self.τ, color='black')
-                plt.title(f'Posterior credible interval and '
-                          f'{fc_steps}-step-ahead forecast')
-            else:
-                plt.title(f'Posterior credible interval')
-
-        def plot_elbos(self):
-            plt.figure()
-            plt.plot(self.elbos)
-            plt.title(r'$\hat L$ by iteration')
-
-        def plot_latent(self, true_z=None, include_data=False):
-            plt.figure()
-            zs = self.u[:-4].numpy()
-            xs = torch.arange(len(zs)).numpy()
-            sds = self.sds()[:-4]
-            if include_data:
-                plt.subplot(211)
-                plt.plot(xs, self.y.numpy())
-                plt.title('Observed data')
-                plt.subplot(212)
-            plt.plot(xs, zs, label=r'$E[z_{1:\tau} | y]$')
-            plt.fill_between(xs, zs - sds, zs + sds, label=r'$\pm$ 1 SD',
-                             color='blue', alpha=0.1)
-            plt.title('Latent state')
-            if true_z is not None:
-                plt.plot(xs, true_z, label=r'$z_{0,1:\tau}$')
-            plt.legend()
-            plt.tight_layout()
-
-        def plot_data(self):
-            plt.figure()
-            plt.plot(self.y.numpy(), label='data')
-            plt.title('Data')
-
-        def __repr__(self):
-            return repr(self.summary())
-
 
 if __name__ == '__main__' and '__file__' in globals():
-    torch.manual_seed(123)
-    m = LocalLevelModel(τ=100, stoch_entropy=False, num_draws=10)
-    y, z = m.simulate(γ=0., η=2., σ=1.5, ρ=0.98)
-    fit = m.training_loop(y, max_iters=2**20)
+    torch.manual_seed(1234)
+    γ0, η0, σ0, ρ0 = 0., 2., 1.5, 0.92
+    y, z = LocalLevelModel(τ=100).simulate(γ=γ0, η=η0, σ=σ0, ρ=ρ0)
+
+    m = LocalLevelModel(τ=100, stochastic_entropy=True, num_draws=2,
+                        stop_heur=NoImprovementStoppingHeuristic())
+    opt = torch.optim.Adadelta(m.parameters)
+    fit = m.training_loop(y, optimizer=opt)
     print(fit.summary())
-    # fit.plot_latent(true_z=z.numpy(), include_data=True)
-    # plt.show()
+    fit.plot_elbos()
+    plt.show()
+    fit.plot_latent(true_z=z.numpy(), include_data=True)
+    plt.show()
     # fit.plot_elbos()
     # plt.show()
     # fit.plot_sampled_paths(200, true_y=y, fc_steps=10)

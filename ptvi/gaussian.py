@@ -16,7 +16,8 @@ class GaussianResult(VIResult):
 
     def __init__(self,
                  model: 'VIModel',
-                 elbo_hats: List[float]):
+                 elbo_hats: List[float],
+                 y):
         super().__init__(model=model, elbo_hats=elbo_hats)
 
         # approximating distribution
@@ -96,20 +97,19 @@ class UnivariateGaussian(VIModel):
     def __init__(self,
                  μ_prior: Distribution=None,
                  σ_prior: Distribution = None,
-                 n_draws: int = 1,
+                 num_draws: int = 1,
                  stochastic_entropy: bool = False,
                  stop_heur: StoppingHeuristic = None
                  ):
         """Create a UnivariateGaussian model object.
 
         Args:
-           n_draws: number of draws for simulating elbo
+           num_draws: number of draws for simulating elbo
            μ_prior: prior for μ (default N(0, 10^2) )
            σ_prior: prior for σ (default LN(0, 10^2) )
            stochastic_entropy: simulate entropy term
            stop_heur: rule for stopping the computation
         """
-        super().__init__(n_draws, stochastic_entropy, stop_heur)
         self.μ_prior = μ_prior or Normal(0, 10)
         self.σ_prior = σ_prior or LogNormal(0, 10)
 
@@ -125,6 +125,8 @@ class UnivariateGaussian(VIModel):
         self.L = torch.tensor(torch.eye(self.d), requires_grad=True)
         self.parameters = [self.u, self.L]
 
+        super().__init__(num_draws, stochastic_entropy, stop_heur)
+
     def simulate(self, N: int, μ0: float, σ0: float, quiet=False):
         assert N > 2 and σ0 > 0
         dgp = Normal(torch.tensor([μ0]), torch.tensor([σ0]))
@@ -139,43 +141,43 @@ class UnivariateGaussian(VIModel):
         q = MultivariateNormal(self.u, scale_tril=L)  # approximating density
         E_ln_lik_hat, E_ln_pr_hat, H_q_hat = 0., 0., 0.  # accumulators
 
-        for _ in range(self.n_draws):
+        for _ in range(self.num_draws):
             ζ = self.u + L@torch.randn((2,))
             μ, η = ζ[0], ζ[1]  # unpack drawn parameter
             σ = self.η_to_σ(η)  # transform to user parameters
 
-            E_ln_lik_hat += Normal(μ, σ).log_prob(y).sum()/self.n_draws
+            E_ln_lik_hat += Normal(μ, σ).log_prob(y).sum()/self.num_draws
             E_ln_pr_hat += (
                 self.μ_prior.log_prob(μ) + self.η_prior.log_prob(η)
-                )/self.n_draws
+                )/self.num_draws
 
             if self.stochastic_entropy:
-                H_q_hat += q.log_prob(ζ)/self.n_draws
+                H_q_hat += q.log_prob(ζ)/self.num_draws
 
         if not self.stochastic_entropy:
             H_q_hat = q.entropy()
 
         return E_ln_lik_hat + E_ln_pr_hat - H_q_hat
 
-    def print_status(self, i, loss):
+    def print_status(self, i, elbo_hat):
         μ_hat, η_hat = self.u[0], self.u[1]
         sds = torch.sqrt(torch.diag(self.L @ self.L.t()))
         μ_sd, η_sd = sds[0], sds[1]
-        print(f'{i: 8d}. smoothed loss ={loss:12.2f}  '
+        print(f'{i: 8d}. smoothed loss ={elbo_hat:12.2f}  '
               f'μ_hat ={μ_hat: 4.2f} ({μ_sd:4.2f}), '
               f'η_hat ={η_hat: 4.2f} ({η_sd:4.2f}) ')
 
     def __str__(self):
         entr = 'stochastic' if self.stochastic_entropy else 'analytic'
-        draw_s = 's' if self.n_draws > 1 else ''
+        draw_s = 's' if self.num_draws > 1 else ''
         return (f"Gaussian model:\n"
                 f"    - {entr} entropy;\n"
-                f"    - {self.n_draws} simulation draw{draw_s};\n"
+                f"    - {self.num_draws} simulation draw{draw_s};\n"
                 f"    - {str(self.stop_heur)}")
 
 
 if __name__ == '__main__' and '__file__' in globals():  # ie run as script
-    model = UnivariateGaussian(n_draws=1, stochastic_entropy=True)
+    model = UnivariateGaussian(num_draws=1, stochastic_entropy=True)
     torch.manual_seed(123)
     N, μ0, σ0 = 100, 5., 5.
     y = model.simulate(N=N, μ0=μ0, σ0=σ0)

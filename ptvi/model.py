@@ -1,12 +1,13 @@
 from time import time
 from typing import List
+from warnings import warn
 
 import torch
-from torch.distributions import Normal
+from torch.distributions import Normal, TransformedDistribution
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ptvi import StoppingHeuristic, ExponentialStoppingHeuristic, plot_dens
+from ptvi import StoppingHeuristic, NoImprovementStoppingHeuristic, plot_dens
 
 
 class VIResult(object):
@@ -15,8 +16,9 @@ class VIResult(object):
 
     def __init__(self,
                  model: 'VIModel',
-                 elbo_hats: List[float]):
-        self.elbo_hats, self.model = elbo_hats, model
+                 elbo_hats: List[float],
+                 y=None):
+        self.elbo_hats, self.model, self.y = elbo_hats, model, y
 
     def __getattr__(self, item):
         """Forward requests for members to the model. Useful for priors."""
@@ -129,23 +131,37 @@ class VIResult(object):
         b += 0.25 * (b-a)
         plot_dens(args, a, b)
 
-    def __repr__(self):
-        return repr(self.summary())
-
-
 
 class VIModel(object):
     """Abstract class for performing VI with general models (not necessarily
     time series models)"""
 
     result_class = VIResult
+    global_params = []
+    transformed_params = {}
 
     def __init__(self,
-                 n_draws: int = 1,
+                 num_draws: int = 1,
                  stochastic_entropy: bool = False,
                  stop_heur: StoppingHeuristic = None):
-        self.stochastic_entropy, self.n_draws = stochastic_entropy, n_draws
-        self.stop_heur = stop_heur or ExponentialStoppingHeuristic(50, 50)
+        self.stochastic_entropy, self.num_draws = stochastic_entropy, num_draws
+        self.stop_heur = stop_heur or NoImprovementStoppingHeuristic()
+
+        # generate priors with respect to transformed parameters
+        for user_param, tfm_param in self.transformed_params.items():
+            prior = getattr(self, f'{user_param}_prior', None)
+            tgt_name = f'{tfm_param}_prior'
+            tfm = getattr(self, f'{tfm_param}_to_{user_param}', None)
+            if not tfm:
+                warn(f'Transformation {tfm_param}_to_{user_param}() not found')
+                continue
+            if not prior:
+                warn(f'Prior {tfm_param}_prior() not found.')
+                continue
+            if getattr(self, tgt_name, None) is None:
+                setattr(self, tgt_name, TransformedDistribution(prior, tfm.inv))
+
+            # TODO: same for approximate marginal posterior?
 
     def simulate(self, *args, quiet=False):
         raise NotImplementedError
@@ -165,7 +181,8 @@ class VIModel(object):
         Returns:
             A VariationalResults object with the approximate posterior.
         """
-        optimizer = optimizer or torch.optim.RMSprop(self.parameters)
+        optimizer = optimizer or torch.optim.Adadelta(self.parameters)
+        assert 0. < λ <= 1., 'λ out of range'
         if not quiet:
             print(f'{"="*80}')
             print(str(self))
@@ -178,31 +195,32 @@ class VIModel(object):
             print(f'{"="*80}')
         t, i = -time(), 0
         elbo_hats = []
-        smoothed_elbo_hat = -self.elbo_hat(y)
+        smoothed_objective = -self.elbo_hat(y)
         for i in range(max_iters):
             optimizer.zero_grad()
             objective = -self.elbo_hat(y)
-            smoothed_elbo_hat = - λ*objective - (1-λ)*smoothed_elbo_hat
             objective.backward()
             optimizer.step()
             elbo_hats.append(-objective)
+            smoothed_objective = λ*objective + (1. - λ)*smoothed_objective
             if not i & (i - 1):
-                self.print_status(i, smoothed_elbo_hat)
+                self.print_status(i, -smoothed_objective)
             if self.stop_heur.early_stop(-objective):
                 print('Stopping heuristic criterion satisfied')
                 break
         else:
-            if not quiet: print('WARNING: maximum iterations reached.')
+            if not quiet:
+                print('WARNING: maximum iterations reached.')
         t += time()
         if not quiet:
-            self.print_status(i + 1, smoothed_elbo_hat)
+            self.print_status(i + 1, -smoothed_objective)
             r = i/(t+1)
             print(f'Completed {i+1} iterations in {t:.1f}s @ {r:.2f} i/s.')
             print(f'{"="*80}')
-        return self.result_class(model=self, elbo_hats=elbo_hats)
+        return self.result_class(model=self, elbo_hats=elbo_hats, y=y)
 
-    def print_status(self, i, loss):
-        print(f'{i: 8d}. smoothed loss ={loss:12.2f}')
+    def print_status(self, i, elbo_hat):
+        print(f'{i: 8d}. smoothed elbo_hat ={elbo_hat:12.2f}')
 
     def __str__(self):
         raise NotImplementedError
