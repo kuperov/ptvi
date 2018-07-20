@@ -11,10 +11,3 @@ class TestSparseMatrix(unittest.TestCase):
             Sd = S.to_dense()
             self.assertTrue(torch.allclose(Sd, torch.eye(n)))
             self.assertTrue(S.requires_grad)
-
-
-class TestSparseMultivariateDistribution(unittest.TestCase):
-
-    def test_multivariate_normal(self):
-        self.fail('not implemented')
-

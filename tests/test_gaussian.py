@@ -1,7 +1,7 @@
 import torch
 from torch.distributions import Normal, LogNormal
 from ptvi import UnivariateGaussian
-from .test_util import TorchTestCase
+from tests.test_util import TorchTestCase
 
 
 class TestGaussian(TorchTestCase):
