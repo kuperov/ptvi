@@ -53,5 +53,5 @@ class ExponentialStoppingHeuristic(StoppingHeuristic):
         self.circular_buffer[buf_idx] = self.curr_elbo
 
     def __str__(self):
-        print(f'Exponential stopping heuristic (N={self.N}, M={self.M}, '
-              f'α={self.α})')
+        return (f'Exponential stopping heuristic (N={self.N}, M={self.M}, '
+                f'α={self.α})')
