@@ -55,3 +55,36 @@ class ExponentialStoppingHeuristic(StoppingHeuristic):
     def __str__(self):
         return (f'Exponential stopping heuristic (N={self.N}, M={self.M}, '
                 f'α={self.α})')
+
+
+class NoImprovementStoppingHeuristic(StoppingHeuristic):
+    """Stop if there has been no improvement for <patience> steps.
+
+    Every N iterations, computes an exponentially-weighted average of the
+    estimated elbo. If this has not increased in the last <patience> steps,
+    early_stop() returns true.
+    """
+
+    def __init__(self, patience=10, N=1, α=.1):
+        assert 0. < α <= 1.
+        self.N, self.patience, self.α = N, patience, α
+        self.i = -1
+        self.no_improvement_count = 0
+        self.curr_elbo, self.past_elbo = None, None
+
+    def early_stop(self, est_elbo: float) -> bool:
+        self.i += 1
+        if self.i % self.N: return False  # only check every N iterations
+        if self.curr_elbo is not None:
+            self.curr_elbo = est_elbo * self.α + (1. - self.α) * self.curr_elbo
+            if est_elbo > self.curr_elbo:
+                self.no_improvement_count = 0
+            else:
+                self.no_improvement_count += 1
+        else:
+            self.curr_elbo = est_elbo
+        return self.no_improvement_count == self.patience
+
+    def __str__(self):
+        return (f'Stop on no improvement (N={self.N}, patience={self.patience},'
+                f' α={self.α})')
