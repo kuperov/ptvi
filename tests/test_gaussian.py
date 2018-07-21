@@ -2,6 +2,7 @@ import torch
 from torch.distributions import Normal, LogNormal
 from ptvi import UnivariateGaussian, VIResult
 from tests.test_util import TorchTestCase
+from unittest.mock import patch
 
 
 class TestGaussian(TorchTestCase):
@@ -32,3 +33,14 @@ class TestGaussian(TorchTestCase):
         y = model.simulate(N=N, μ0=μ0, σ0=σ0)
         fit = model.training_loop(y, max_iters=2**4)
         self.assertIsInstance(fit, VIResult)
+
+    def test_plots(self):
+        torch.manual_seed(123)
+        m = UnivariateGaussian(quiet=True)
+        N, μ0, σ0 = 100, 5., 5.
+        y = m.simulate(N=N, μ0=μ0, σ0=σ0)
+        fit = m.training_loop(y, max_iters=100)
+
+        patch("ptvi.model.plt.show", fit.plot_marg_post('μ'))
+        patch("ptvi.model.plt.show", fit.plot_data())
+        patch("ptvi.model.plt.show", fit.plot_elbos())

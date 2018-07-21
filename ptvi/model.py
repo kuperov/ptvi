@@ -160,6 +160,8 @@ class VIResult(object):
                          color='blue', alpha=0.1)
         plt.title('Latent state')
         if true_z is not None:
+            if isinstance(true_z, torch.Tensor):
+                true_z = true_z.numpy()
             plt.plot(xs, true_z, label=r'$z_{0,1:\tau}$')
         plt.legend()
         plt.tight_layout()
@@ -169,7 +171,7 @@ class VIResult(object):
         plt.plot(self.y.numpy(), label='data')
         plt.title('Data')
 
-    def plot_marg_post(self, variable: str, suffix='', true_val: float=None,
+    def plot_marg_post(self, variable:str, suffix='', true_val:float=None,
                        new_figure=True, plot_prior=True):
         """Plot marginal posterior distribution, prior, and optionally the
         true value.
@@ -198,20 +200,17 @@ class VITimeSeriesResult(VIResult):
     """Time series result object, which adds plotting functions etc relevant
     for TS models.
     """
-    def __index__(self,
-                 model: 'VITimeSeriesModel',
-                 elbo_hats: List[float],
-                 y=None):
+    def __init__(self, model: 'VITimeSeriesModel', elbo_hats: List[float], y):
+        self.input_length = len(y)
         super().__init__(model=model, elbo_hats=elbo_hats, y=y)
 
-    def plot_sampled_paths(self, N=50, fc_steps=0, true_y=None):
+    def plot_sample_paths(self, N=50, fc_steps=0, true_y=None):
         paths = self.model.sample_paths(N, fc_steps=fc_steps)
-        plt.figure()
-        xs, fxs = range(self.τ), range(self.τ+fc_steps)
+        xs, fxs = range(self.input_length), range(self.input_length+fc_steps)
         for i in range(N):
             plt.plot(fxs, paths[i, :].numpy(), linewidth=0.5, alpha=0.5)
         if fc_steps > 0:
-            plt.axvline(x=self.τ, color='black')
+            plt.axvline(x=self.input_length, color='black')
             plt.title(f'{N} posterior samples and {fc_steps}-step forecast')
         else:
             plt.title(f'{N} posterior samples')
@@ -219,22 +218,21 @@ class VITimeSeriesResult(VIResult):
             plt.plot(xs, true_y.numpy(), color='black', linewidth=2, label='y')
             plt.legend()
 
-    def plot_pred_ci(self, N: int = 100, α: float = 0.05, true_y=None,
-                     fc_steps: int = 0):
+    def plot_pred_ci(self, N:int=100, α:float=0.05, true_y=None,
+                     fc_steps:int=0):
         paths = self.model.sample_paths(N, fc_steps=fc_steps)
-        ci_bands = np.empty([self.τ+fc_steps, 2])
-        fxs, xs = range(self.τ+fc_steps), range(self.τ)
+        ci_bands = np.empty([self.input_length+fc_steps, 2])
+        fxs, xs = range(self.input_length+fc_steps), range(self.input_length)
         perc = 100 * np.array([α * 0.5, 1. - α * 0.5])
         for t in fxs:
             ci_bands[t, :] = np.percentile(paths[:, t], q=perc)
-        plt.figure()
         plt.fill_between(fxs, ci_bands[:, 0], ci_bands[:, 1], alpha=0.5,
                          label=f'{(1-α)*100:.0f}% CI')
         if true_y is not None:
             plt.plot(xs, true_y.numpy(), color='black', linewidth=2, label='y')
             plt.legend()
         if fc_steps > 0:
-            plt.axvline(x=self.τ, color='black')
+            plt.axvline(x=self.input_length, color='black')
             plt.title(f'Posterior credible interval and '
                       f'{fc_steps}-step-ahead forecast')
         else:
@@ -296,7 +294,7 @@ class VIModel(object):
     def simulate(self, *args, **kwargs):
         raise NotImplementedError
 
-    def training_loop(self, y, max_iters: int = 2**20, λ=0.1, quiet=False):
+    def training_loop(self, y, max_iters: int = 2**20, λ=0.1):
         """Train the model using VI.
 
         Args:

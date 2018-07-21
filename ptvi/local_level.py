@@ -1,11 +1,10 @@
 import torch
 from torch.distributions import *
-from time import time
 import matplotlib.pyplot as plt
 from ptvi.stopping import *
 from ptvi.dist import InvGamma
-from ptvi import VIModel, VITimeSeriesResult, ModelParameter, TransformedModelParameter, LocalParameter
-import numpy as np
+from ptvi import (VIModel, VITimeSeriesResult, ModelParameter, LocalParameter,
+                  TransformedModelParameter)
 
 
 class LocalLevelModel(VIModel):
@@ -26,9 +25,6 @@ class LocalLevelModel(VIModel):
             name='ρ', prior=Beta(1, 1), transformed_name='φ',
             transform=SigmoidTransform().inv)
     ]
-
-    # def __init__(self, input_length: int, *args, **kwargs):
-    #     super().__init__(input_length=input_length, *args, **kwargs)
 
     def elbo_hat(self, y):
         L = torch.tril(self.L)  # force gradients for L to be lower triangular
@@ -83,12 +79,13 @@ class LocalLevelModel(VIModel):
         """
         paths = torch.empty((N, self.input_length + fc_steps))
         ζs = MultivariateNormal(self.u, scale_tril=self.L).sample((N,))
+        _τ = self.input_length
         for i in range(N):
             ζ = ζs[i]
-            γ, ψ, ς, φ = ζ[self.input_length], ζ[self.input_length + 1], ζ[self.input_length + 2], ζ[self.input_length + 3]
+            γ, ψ, ς, φ = ζ[_τ], ζ[_τ + 1], ζ[_τ + 2], ζ[_τ + 3]
             z = torch.zeros((self.input_length + fc_steps,))
             z[:self.input_length] = ζ[:self.input_length]
-            η, σ, ρ = self.ψ_to_η(ψ), self.ς_to_σ(ς), self.φ_to_ρ(φ)
+            η, σ, ρ = self.η_to_ψ.inv(ψ), self.σ_to_ς.inv(ς), self.ρ_to_φ.inv(φ)
             # project states forward
             for t in range(self.input_length, self.input_length + fc_steps):
                 z[t] = z[t-1]*ρ + Normal(0, 1).sample()
