@@ -138,6 +138,15 @@ class MVNPrecisionTril(torch.distributions.Distribution):
         return self.loc + _batch_mv(self.scale_tril, eps)
 
 
+class Improper(torch.distributions.Distribution):
+
+    support = constraints.real
+    has_rsample = False
+
+    def log_prob(self, value):
+        return 0.
+
+
 class InvWishart(torch.distributions.Distribution):
     """Inverse-Wishart distribution, which is a distribution over real-valued
     positive-definite matrices.

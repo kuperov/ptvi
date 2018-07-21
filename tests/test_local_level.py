@@ -9,9 +9,14 @@ class TestLocalLevel(unittest.TestCase):
         torch.manual_seed(123)
         m = LocalLevelModel(input_length=20, quiet=True)
         y, z = m.simulate(γ=0., η=2., σ=1.5, ρ=0.85)
+        self.assertEqual(20, len(y))
+        self.assertEqual(20, len(z))
         fit = m.training_loop(y, max_iters=8)
-
         self.assertIsInstance(fit, VITimeSeriesResult)
+        # we can't do much better than smoke test sampling methods
+        ss = m.sample_paths(10, 10)
+        self.assertEqual(ss.shape, (10, 10+20))
+        self.assertEqual(0, torch.sum(torch.isnan(ss)))
 
     def test_plots(self):
         torch.manual_seed(123)

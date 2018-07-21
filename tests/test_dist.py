@@ -1,10 +1,11 @@
 import unittest
 import torch
 import numpy as np
-from ptvi.dist import MVNPrecisionTril
+from ptvi.dist import MVNPrecisionTril, Improper
+from tests.test_util import TorchTestCase
 
 
-class TestMVNPrecisionTril(unittest.TestCase):
+class TestMVNPrecisionTril(TorchTestCase):
 
     def test_logprob_dense(self):
         k = 5
@@ -48,3 +49,8 @@ class TestMVNPrecisionTril(unittest.TestCase):
             logdens = dist.log_prob(x)
             logdens2 = dist_equiv.log_prob(x)
             self.assertTrue(torch.allclose(logdens, logdens2, rtol=1e-2))
+
+    def test_improper(self):
+        im = Improper()
+        self.assertClose(im.log_prob(torch.tensor([1., 2., 3., 4.])),
+                         torch.zeros(4))
