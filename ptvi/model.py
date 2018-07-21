@@ -1,18 +1,95 @@
 from time import time
-from typing import List
+from typing import List, Dict
 from warnings import warn
 
 import torch
-from torch.distributions import Normal, TransformedDistribution
+from torch.distributions import (
+    Distribution, Normal, TransformedDistribution, MultivariateNormal,
+    Transform)
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 from ptvi import StoppingHeuristic, NoImprovementStoppingHeuristic, plot_dens
 
 
-class VIResult(object):
-    """Base class for representing model results.
+class ModelParameter(object):
+    """A parameter in a model.
+
+    Attrs:
+        name:            param name, usually a greek letter or short identifier
+        prior:           a Distribution object
+        parameter_index: index of the *start* of this parameter, when it is
+                         stacked in optimizaton space
+        dimension:       length of parameter when stacked as a vector
     """
+    index = -1
+    dimension = 1
+
+    def __init__(self, name: str, prior: Distribution):
+        self.name, self.prior = name, prior
+
+    @property
+    def prior_name(self):
+        return '{}_prior'.format(self.name)
+
+    @property
+    def post_marg_name(self):
+        return '{}_post_marg'.format(self.name)
+
+    def __str__(self):
+        return f"{self.name} with prior {self.prior}"
+
+
+class TransformedModelParameter(ModelParameter):
+    """A parameter that has been transformed to an unrestricted space.
+
+    Attrs:
+        name:             param name, usually a greek letter or short word
+        prior:            a Distribution object
+        transformed_name: name to use in optimization space
+        transform:        transformation to apply
+        parameter_index:  index of the *start* of this parameter, when it is
+                          stacked in optimizaton space
+        dimension:        length of parameter when stacked as a vector
+    """
+    def __init__(self, name: str, prior: Distribution, transformed_name: str,
+                 transform: Transform):
+        super().__init__(name, prior)
+        self.transformed_name = transformed_name
+        self.transform = transform
+
+    @property
+    def tfm_prior_name(self):
+        return '{}_prior'.format(self.transformed_name)
+
+    @property
+    def tfm_name(self):
+        return '{}_to_{}'.format(self.name, self.transformed_name)
+
+    @property
+    def tfm_post_marg_name(self):
+        return '{}_post_marg'.format(self.transformed_name)
+
+    def __str__(self):
+        return (f"{self.name} with prior {self.prior} transformed to "
+                f"{self.transformed_name} by {self.transform}")
+
+
+class LocalParameter(ModelParameter):
+    """A local model parameter.
+
+    For now local parameters are assumed not transformable and dimension 1.
+    """
+    def __init__(self, name: str, prior: Distribution):
+        super().__init__(name, prior)
+
+    def __str__(self):
+        return f"{self.name} local parameter with prior {self.prior}"
+
+
+class VIResult(object):
+    """Base class for representing model results."""
 
     def __init__(self,
                  model: 'VIModel',
@@ -20,80 +97,59 @@ class VIResult(object):
                  y=None):
         self.elbo_hats, self.model, self.y = elbo_hats, model, y
 
-    def __getattr__(self, item):
-        """Forward requests for members to the model. Useful for priors."""
-        return getattr(self.model, item, None)
+        self.u, self.L = model.u.data, model.L.data
+        # posteriors are transformed from normal distributions
+        self.q = MultivariateNormal(self.u, scale_tril=self.L)
+
+        sds = torch.sqrt(self.q.variance)
+        for p in model.params:
+            setattr(self, p.prior_name, getattr(model, p.prior_name))
+            if p.dimension > 1:
+                continue
+            # construct marginals in optimization space
+            if isinstance(p, TransformedModelParameter):
+                tfm_post_marg = Normal(self.u[p.index], sds[p.index])
+                setattr(self, p.tfm_post_marg_name, tfm_post_marg)
+
+                tfm_prior = getattr(model, p.tfm_prior_name)
+                setattr(self, p.tfm_prior_name, tfm_prior)
+                tfm = getattr(model, p.tfm_name)
+                setattr(self, p.tfm_name, tfm)
+                post_marg = TransformedDistribution(tfm_post_marg, tfm.inv)
+                setattr(self, p.post_marg_name, post_marg)
+            else:
+                post_marg = Normal(self.u[p.index], sds[p.index])
+                setattr(self, p.post_marg_name, post_marg)
 
     def summary(self):
         """Return a pandas data frame summarizing model parameters"""
-        raise NotImplementedError
-        import pandas as pd
         # transform and simulate from marginal transformed parameters
-        params = ['γ', 'η', 'σ', 'ρ']
-        means, sds = [], []
-        for param in params:
-            post = getattr(self, f'{param}_marg_post')
+        names, means, sds = [], [], []
+        for p in self.model.params:
+            post = getattr(self, p.post_marg_name, None)
+            if p.dimension > 1 and post is not None:
+                continue
             if isinstance(post, Normal):
-                means.append(float(post.loc.numpy()))
-                sds.append(float(post.scale.numpy()))
-            else:  # simulate non-gaussian posteriors
-                xs = post.sample((100,)).numpy()
-                means.append(np.mean(xs))
-                sds.append(np.std(xs))
-        return pd.DataFrame({'mean': means, 'sd': sds}, index=params)
-
-    def sds(self):
-        Σ = self.L@(self.L.t())
-        return torch.sqrt(torch.diag(Σ)).numpy()
-
-    def plot_sampled_paths(self, N=50, fc_steps=0, true_y=None):
-        paths = self.model.sample_paths(N, fc_steps=fc_steps)
-        plt.figure()
-        xs, fxs = range(self.τ), range(self.τ+fc_steps)
-        for i in range(N):
-            plt.plot(fxs, paths[i, :].numpy(), linewidth=0.5, alpha=0.5)
-        if fc_steps > 0:
-            plt.axvline(x=self.τ, color='black')
-            plt.title(f'{N} posterior samples and {fc_steps}-step forecast')
-        else:
-            plt.title(f'{N} posterior samples')
-        if true_y is not None:
-            plt.plot(xs, true_y.numpy(), color='black', linewidth=2,
-                     label='y')
-            plt.legend()
-
-    def plot_pred_ci(self, N: int = 100, α: float = 0.05, true_y=None,
-                     fc_steps: int = 0):
-        paths = self.model.sample_paths(N, fc_steps=fc_steps)
-        ci_bands = np.empty([self.τ+fc_steps, 2])
-        fxs, xs = range(self.τ+fc_steps), range(self.τ)
-        perc = 100 * np.array([α * 0.5, 1. - α * 0.5])
-        for t in fxs:
-            ci_bands[t, :] = np.percentile(paths[:, t], q=perc)
-        plt.figure()
-        plt.fill_between(fxs, ci_bands[:, 0], ci_bands[:, 1], alpha=0.5,
-                         label=f'{(1-α)*100:.0f}% CI')
-        if true_y is not None:
-            plt.plot(xs, true_y.numpy(), color='black', linewidth=2,
-                     label='y')
-            plt.legend()
-        if fc_steps > 0:
-            plt.axvline(x=self.τ, color='black')
-            plt.title(f'Posterior credible interval and '
-                      f'{fc_steps}-step-ahead forecast')
-        else:
-            plt.title(f'Posterior credible interval')
+                names.append(p.name)
+                means.append(float(post.loc))
+                sds.append(float(post.scale))
+            elif post is not None:  # simulate non-gaussian posteriors
+                names.append(p.name)
+                xs = post.sample((100,))
+                means.append(float(torch.mean(xs)))
+                sds.append(float(torch.std(xs)))
+        return pd.DataFrame({'mean': means, 'sd': sds}, index=names)
 
     def plot_elbos(self):
         plt.figure()
-        plt.plot(self.elbos)
+        plt.plot(self.elbo_hats)
         plt.title(r'$\hat L$ by iteration')
 
     def plot_latent(self, true_z=None, include_data=False):
         plt.figure()
-        zs = self.u[:-4].numpy()
+        zs = self.q.mean[:-4].numpy()
         xs = torch.arange(len(zs)).numpy()
-        sds = self.sds()[:-4]
+        sds = torch.sqrt(self.q.variance).numpy()[:-4]
         if include_data:
             plt.subplot(211)
             plt.plot(xs, self.y.numpy())
@@ -113,61 +169,134 @@ class VIResult(object):
         plt.plot(self.y.numpy(), label='data')
         plt.title('Data')
 
-    def plot_marg(self, variable: str, suffix='', true_val: float=None, **kwargs):
-        post_key = f'$p({variable}{suffix} | y)$'
-        prior_key = f'$p({variable}{suffix})$'
-        args = {
-            prior_key: getattr(self, f'{variable}_prior'),
-            post_key: getattr(self, f'{variable}_marg_post')
-        }
-        if true_val is not None:
-            args[f'${variable}{suffix}_0$'] = true_val
-        if kwargs:
-            args.update(kwargs)
+    def plot_marg_post(self, variable: str, suffix='', true_val: float=None,
+                       new_figure=True, plot_prior=True):
+        """Plot marginal posterior distribution, prior, and optionally the
+        true value.
+        """
+        post = getattr(self, f'{variable}_post_marg')
+        prior = getattr(self, f'{variable}_prior')
         # figure out range by sampling from posterior
-        variates = args[post_key].sample((100,))
+        variates = post.sample((100,))
         a, b = min(variates), max(variates)
-        a -= 0.25 * (b-a)
-        b += 0.25 * (b-a)
-        plot_dens(args, a, b)
+        xs = torch.linspace(a-(b-a)/4., b+(b-a)/4., 500)
+
+        def plotpdf(p, label=''):
+            ys = torch.exp(p.log_prob(xs))
+            ys[torch.isnan(ys)] = 0
+            plt.plot(xs.numpy(), ys.numpy(), label=label)
+
+        if plot_prior:
+            plotpdf(prior, label=f'$p({variable}{suffix})$')
+        plotpdf(post, label=f'$p({variable}{suffix} | y)$')
+        if true_val is not None:
+            plt.axvline(true_val, label=f'${variable}{suffix}$', linestyle='--')
+        plt.legend()
+
+
+class VITimeSeriesResult(VIResult):
+    """Time series result object, which adds plotting functions etc relevant
+    for TS models.
+    """
+    def __index__(self,
+                 model: 'VITimeSeriesModel',
+                 elbo_hats: List[float],
+                 y=None):
+        super().__init__(model=model, elbo_hats=elbo_hats, y=y)
+
+    def plot_sampled_paths(self, N=50, fc_steps=0, true_y=None):
+        paths = self.model.sample_paths(N, fc_steps=fc_steps)
+        plt.figure()
+        xs, fxs = range(self.τ), range(self.τ+fc_steps)
+        for i in range(N):
+            plt.plot(fxs, paths[i, :].numpy(), linewidth=0.5, alpha=0.5)
+        if fc_steps > 0:
+            plt.axvline(x=self.τ, color='black')
+            plt.title(f'{N} posterior samples and {fc_steps}-step forecast')
+        else:
+            plt.title(f'{N} posterior samples')
+        if true_y is not None:
+            plt.plot(xs, true_y.numpy(), color='black', linewidth=2, label='y')
+            plt.legend()
+
+    def plot_pred_ci(self, N: int = 100, α: float = 0.05, true_y=None,
+                     fc_steps: int = 0):
+        paths = self.model.sample_paths(N, fc_steps=fc_steps)
+        ci_bands = np.empty([self.τ+fc_steps, 2])
+        fxs, xs = range(self.τ+fc_steps), range(self.τ)
+        perc = 100 * np.array([α * 0.5, 1. - α * 0.5])
+        for t in fxs:
+            ci_bands[t, :] = np.percentile(paths[:, t], q=perc)
+        plt.figure()
+        plt.fill_between(fxs, ci_bands[:, 0], ci_bands[:, 1], alpha=0.5,
+                         label=f'{(1-α)*100:.0f}% CI')
+        if true_y is not None:
+            plt.plot(xs, true_y.numpy(), color='black', linewidth=2, label='y')
+            plt.legend()
+        if fc_steps > 0:
+            plt.axvline(x=self.τ, color='black')
+            plt.title(f'Posterior credible interval and '
+                      f'{fc_steps}-step-ahead forecast')
+        else:
+            plt.title(f'Posterior credible interval')
 
 
 class VIModel(object):
     """Abstract class for performing VI with general models (not necessarily
-    time series models)"""
+    time series models).
+    """
 
-    result_class = VIResult
-    global_params = []
-    transformed_params = {}
+    params: List[ModelParameter] = []
+    result_class: classmethod = VIResult
+    name = 'VI Model'
 
     def __init__(self,
+                 input_length=None,
                  num_draws: int = 1,
+                 quiet=False,
                  stochastic_entropy: bool = False,
                  stop_heur: StoppingHeuristic = None):
         self.stochastic_entropy, self.num_draws = stochastic_entropy, num_draws
         self.stop_heur = stop_heur or NoImprovementStoppingHeuristic()
+        self.quiet, self.input_length = quiet, input_length
 
-        # generate priors with respect to transformed parameters
-        for user_param, tfm_param in self.transformed_params.items():
-            prior = getattr(self, f'{user_param}_prior', None)
-            tgt_name = f'{tfm_param}_prior'
-            tfm = getattr(self, f'{tfm_param}_to_{user_param}', None)
-            if not tfm:
-                warn(f'Transformation {tfm_param}_to_{user_param}() not found')
-                continue
-            if not prior:
-                warn(f'Prior {tfm_param}_prior() not found.')
-                continue
-            if getattr(self, tgt_name, None) is None:
-                setattr(self, tgt_name, TransformedDistribution(prior, tfm.inv))
+        index = 0
+        self.d = 0
+        for p in self.params:
+            p.index = index
+            prior_name = f'{p.name}_prior'  # e.g. self.σ_prior()
+            setattr(self, prior_name, p.prior)
 
-            # TODO: same for approximate marginal posterior?
+            if isinstance(p, LocalParameter):
+                if input_length is None:
+                    raise Exception('Data length required for local variables')
+                p.dimension = input_length
+            elif isinstance(p, TransformedModelParameter):
+                tfm_name = f'{p.name}_to_{p.transformed_name}'
+                setattr(self, tfm_name, p.transform)  # e.g. self.σ_to_φ()
+                tfm_prior_name = f'{p.transformed_name}_prior'
+                tfm_prior = TransformedDistribution(p.prior, p.transform)
+                setattr(self, tfm_prior_name, tfm_prior)  # e.g. self.φ_prior()
+            index += p.dimension
+            self.d += p.dimension
 
-    def simulate(self, *args, quiet=False):
+        # dense approximation: q = N(u, LL')
+        self.u = torch.tensor(torch.zeros(self.d), requires_grad=True)
+        self.L = torch.tensor(torch.eye(self.d), requires_grad=True)
+        self.parameters = [self.u, self.L]
+        self.q = MultivariateNormal(self.u, scale_tril=self.L)
+
+        self.optimizer = torch.optim.Adadelta(self.parameters)
+
+    def print(self, *args):
+        """Print function that only does anything if quiet is False."""
+        if not self.quiet:
+            print(*args)
+
+    def simulate(self, *args, **kwargs):
         raise NotImplementedError
 
-    def training_loop(self, y, max_iters: int = 2**20, λ=0.1, quiet=False,
-                      optimizer=None):
+    def training_loop(self, y, max_iters: int = 2**20, λ=0.1, quiet=False):
         """Train the model using VI.
 
         Args:
@@ -176,51 +305,49 @@ class VIModel(object):
             λ: exponential smoothing parameter for displaying estimated elbo
                (display only; does not affect the optimization)
             quiet: suppress output
-            optimizer: override optimizer
 
         Returns:
             A VariationalResults object with the approximate posterior.
         """
-        optimizer = optimizer or torch.optim.Adadelta(self.parameters)
         assert 0. < λ <= 1., 'λ out of range'
-        if not quiet:
-            print(f'{"="*80}')
-            print(str(self))
-            print(f'\n{type(optimizer).__name__} optimizer with param groups:')
-            for i, pg in enumerate(optimizer.param_groups):
-                desc = ', '.join(f'{k}={v}' for k, v in pg.items()
-                                 if k != 'params')
-                print(f'    group {i}. {desc}')
-            print(f'\nDisplayed loss is smoothed with λ={λ}')
-            print(f'{"="*80}')
+        self.print(f'{"="*80}\n{str(self)}\n\n'
+                   f'Displayed loss is smoothed with λ={λ}\n{"="*80}')
         t, i = -time(), 0
         elbo_hats = []
-        smoothed_objective = -self.elbo_hat(y)
+        smoothed_objective = -self.elbo_hat(y).data
         for i in range(max_iters):
-            optimizer.zero_grad()
+            self.optimizer.zero_grad()
             objective = -self.elbo_hat(y)
             objective.backward()
-            optimizer.step()
-            elbo_hats.append(-objective)
-            smoothed_objective = λ*objective + (1. - λ)*smoothed_objective
+            self.optimizer.step()
+            elbo_hats.append(-objective.data)
+            smoothed_objective = λ*objective.data + (1. - λ)*smoothed_objective
             if not i & (i - 1):
                 self.print_status(i, -smoothed_objective)
-            if self.stop_heur.early_stop(-objective):
-                print('Stopping heuristic criterion satisfied')
+            if self.stop_heur.early_stop(-objective.data):
+                self.print('Stopping heuristic criterion satisfied')
                 break
         else:
-            if not quiet:
-                print('WARNING: maximum iterations reached.')
+            self.print('WARNING: maximum iterations reached.')
         t += time()
-        if not quiet:
-            self.print_status(i + 1, -smoothed_objective)
-            r = i/(t+1)
-            print(f'Completed {i+1} iterations in {t:.1f}s @ {r:.2f} i/s.')
-            print(f'{"="*80}')
-        return self.result_class(model=self, elbo_hats=elbo_hats, y=y)
+        self.print_status(i + 1, -smoothed_objective)
+        self.print(
+            f'Completed {i+1} iterations in {t:.1f}s @ {i/(t+1):.2f} i/s.\n'
+            f'{"="*80}')
+        result = self.result_class(model=self, elbo_hats=elbo_hats, y=y)
+        return result
 
     def print_status(self, i, elbo_hat):
-        print(f'{i: 8d}. smoothed elbo_hat ={elbo_hat:12.2f}')
+        self.print(f'{i: 8d}. smoothed elbo_hat ={elbo_hat:12.2f}')
 
     def __str__(self):
-        raise NotImplementedError
+        _entr = 'Stochastic' if self.stochastic_entropy else 'Analytic'
+        _oname = type(self.optimizer).__name__
+        lines = [f"{self.name}:\n"
+                 f"  - {_entr} entropy term with M={self.num_draws};\n"
+                 f"  - {str(self.stop_heur)}",
+                 f'  - {_oname} optimizer with param groups:']
+        for i, pg in enumerate(self.optimizer.param_groups):
+            desc = ', '.join(f'{k}={v}' for k, v in pg.items() if k != 'params')
+            lines.append(f'    group {i}. {desc}')
+        return '\n'.join(lines)

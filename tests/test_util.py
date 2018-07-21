@@ -4,6 +4,10 @@ import torch
 
 class TorchTestCase(unittest.TestCase):
 
-    def assertClose(self, *args, **kwargs):
-        self.assertTrue(torch.allclose(*args, **kwargs), msg='{} != {}'.format(
-            args[0], args[1]))
+    def assertClose(self, a, b, **kwargs):
+        if not isinstance(a, torch.Tensor):
+            a = torch.tensor(a)
+        if not isinstance(b, torch.Tensor):
+            b = torch.tensor(b)
+        self.assertTrue(torch.allclose(a, b, **kwargs), msg='{} != {}'.format(
+            a, b))
