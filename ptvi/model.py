@@ -13,6 +13,9 @@ import pandas as pd
 from ptvi import StoppingHeuristic, NoImprovementStoppingHeuristic, plot_dens, Improper
 
 
+_DIVIDER = "―"*80
+
+
 class ModelParameter(object):
     """A parameter in a model.
 
@@ -425,8 +428,8 @@ class VIModel(object):
             A VariationalResults object with the approximate posterior.
         """
         assert 0. < λ <= 1., 'λ out of range'
-        self.print(f'{"="*80}\n{str(self)}\n\n'
-                   f'Displayed loss is smoothed with λ={λ}\n{"="*80}')
+        self.print(f'{_DIVIDER}\nStructured SGVB Inference\n\n{str(self)}\n\n'
+                   f'Displayed loss is smoothed with λ={λ}\n{_DIVIDER}')
         t, i = -time(), 0
         elbo_hats = []
         smoothed_objective = -self.elbo_hat(y).data
@@ -457,6 +460,58 @@ class VIModel(object):
 
     def print_status(self, i, elbo_hat):
         self.print(f'{i: 8d}. smoothed elbo_hat ={float(elbo_hat):12.2f}')
+
+    def map(self, y, max_iters=20, ε=1e-4):
+        """Compute the maximum a postiori (MAP) by maximizing the log joint
+        function with respect to the parameter ζ (in optimization space).
+
+        Call self.unpack() to convert parameters in natural coordinates.
+        """
+        self.print(f'{_DIVIDER}\nMAP inference with BGFS\n\n{str(self)}\n'
+                   f'{_DIVIDER}')
+        ζ = torch.zeros(self.d, requires_grad=True)
+        optimizer = torch.optim.LBFGS([ζ])
+        last_loss, t = None, -time()
+        for i in range(max_iters):
+            def closure():
+                optimizer.zero_grad()
+                loss = -self.ln_joint(y, ζ)
+                loss.backward()
+                return loss
+            loss = optimizer.step(closure)
+            self.print(f'{i:8d}. ll = {-float(loss.data):.4f}')
+            if last_loss and last_loss < loss + ε:
+                self.print('Convergence criterion met.')
+                break
+            last_loss = loss
+        else:
+            self.print('WARNING: maximum iterations reached.')
+        self.print(f'{i:8d}. ll = {-float(loss.data):.4f}')
+        self.print(f'Completed {i+1:d} iterations in {t+time():.2f}s.')
+        self.print(_DIVIDER)
+        return ζ.detach()
+
+    # https://discuss.pytorch.org/t/compute-the-hessian-matrix-of-a-network/15270#post_3
+    def ln_joint_hessian(self, y, ζ):
+        z = torch.tensor(ζ, requires_grad=True)
+        lj = self.ln_joint(y, z)
+        loss_grad = torch.autograd.grad(lj, z, create_graph=True)
+        cnt = 0
+        for g in loss_grad:
+            g_vector = g.contiguous().view(-1) if cnt == 0 else torch.cat(
+                [g_vector, g.contiguous().view(-1)])
+            cnt = 1
+        l = g_vector.size(0)
+        hessian = torch.zeros(l, l)
+        for idx in range(l):
+            grad2rd = torch.autograd.grad(g_vector[idx], z, create_graph=True)
+            cnt = 0
+            for g in grad2rd:
+                g2 = g.contiguous().view(-1) if cnt == 0 else torch.cat(
+                    [g2, g.contiguous().view(-1)])
+                cnt = 1
+            hessian[idx] = g2
+        return hessian
 
     def __str__(self):
         _entr = 'Stochastic' if self.stochastic_entropy else 'Analytic'

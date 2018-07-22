@@ -8,3 +8,4 @@ from .model import (VIModel, VIResult, VITimeSeriesResult, ModelParameter,
                     LocalParameter, TransformedModelParameter, local_param, global_param)
 from .gaussian import UnivariateGaussian
 from .local_level import LocalLevelModel
+from .stoch_vol import StochVolModel

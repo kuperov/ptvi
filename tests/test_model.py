@@ -1,3 +1,4 @@
+import math
 import tests.test_util
 from ptvi import *
 from torch.distributions import (
@@ -44,3 +45,22 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
         self.assertEqual(m.b.transformed_name, 'log_b')
 
         self.assertEqual(m.params, [m.z, m.a, m.b])
+
+    def test_map(self):
+        model = UnivariateGaussian(quiet=True)
+        torch.manual_seed(123)
+        N, μ0, σ0 = 100, 5., 5.
+        y = model.simulate(N=N, μ0=μ0, σ0=σ0)
+        ζ = model.map(y, max_iters=20)
+        self.assertIsInstance(ζ, torch.Tensor)
+        self.assertEqual(ζ.shape, (model.d,))
+
+    def test_hessian(self):
+        model = UnivariateGaussian(quiet=True)
+        torch.manual_seed(123)
+        N, μ0, σ0 = 100, 5., 5.
+        y = model.simulate(N=N, μ0=μ0, σ0=σ0)
+        ζ = torch.tensor([μ0, math.log(σ0)])
+        H = model.ln_joint_hessian(y, ζ)
+        self.assertIsInstance(ζ, torch.Tensor)
+        self.assertEqual(H.shape, (model.d, model.d))

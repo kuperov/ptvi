@@ -14,6 +14,14 @@ class TestLocalLevel(unittest.TestCase):
         fit = m.training_loop(y, max_iters=8)
         self.assertIsInstance(fit, VITimeSeriesResult)
 
+    def test_map_inference(self):
+        torch.manual_seed(123)
+        model = LocalLevelModel(input_length=100, quiet=True)
+        y, z = model.simulate(γ=0., η=2., σ=1.5, ρ=0.85)
+        ζ = model.map(y)
+        self.assertIsInstance(ζ, torch.Tensor)
+        self.assertEqual(ζ.shape, (model.d,))
+
     def test_outputs(self):
         torch.manual_seed(123)
         m = LocalLevelModel(input_length=20, quiet=True)
