@@ -13,10 +13,21 @@ class TestLocalLevel(unittest.TestCase):
         self.assertEqual(20, len(z))
         fit = m.training_loop(y, max_iters=8)
         self.assertIsInstance(fit, VITimeSeriesResult)
+
+    def test_outputs(self):
+        torch.manual_seed(123)
+        m = LocalLevelModel(input_length=20, quiet=True)
+        y, z = m.simulate(γ=0., η=2., σ=1.5, ρ=0.85)
         # we can't do much better than smoke test sampling methods
-        ss = m.sample_paths(10, 10)
-        self.assertEqual(ss.shape, (10, 10+20))
+        fit = m.training_loop(y, max_iters=100)
+        ss = m.sample_paths(N=10, fc_steps=0)
+        self.assertEqual(ss.shape, (10, 20))
         self.assertEqual(0, torch.sum(torch.isnan(ss)))
+        ss = m.sample_paths(N=10, fc_steps=10)
+        self.assertEqual(ss.shape, (10, 20+10))
+        self.assertEqual(0, torch.sum(torch.isnan(ss)))
+        summ = fit.summary()
+        self.assertTrue(all(summ.index == ['γ', 'η', 'σ', 'ρ']))
 
     def test_plots(self):
         torch.manual_seed(123)

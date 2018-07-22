@@ -27,8 +27,7 @@ class LocalLevelModel(VIModel):
     ]
 
     def elbo_hat(self, y):
-        L = torch.tril(self.L)  # force gradients for L to be lower triangular
-        _τ = self.input_length
+        L = torch.tril(self.L)
         E_ln_lik_hat, E_ln_pr_hat, H_q_hat = 0., 0., 0.  # accumulators
 
         q = MultivariateNormal(loc=self.u, scale_tril=L)
@@ -37,9 +36,7 @@ class LocalLevelModel(VIModel):
 
         for _ in range(self.num_draws):
             ζ = self.u + L@torch.randn((self.d,))  # reparam trick
-            z, γ, ψ, ς, φ = ζ[:_τ], ζ[_τ], ζ[_τ + 1], ζ[_τ + 2], ζ[_τ + 3]
-            # transform from optimization to user coordinates
-            η, σ, ρ = self.η_to_ψ.inv(ψ), self.σ_to_ς.inv(ς), self.ρ_to_φ.inv(φ)
+            z, γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)
             ar1_uncond_var = torch.pow((1 - torch.pow(ρ, 2)), -0.5)
             llikelihood = (
                 Normal(γ + η * z, σ).log_prob(y).sum()
@@ -82,10 +79,9 @@ class LocalLevelModel(VIModel):
         _τ = self.input_length
         for i in range(N):
             ζ = ζs[i]
-            γ, ψ, ς, φ = ζ[_τ], ζ[_τ + 1], ζ[_τ + 2], ζ[_τ + 3]
-            z = torch.zeros((self.input_length + fc_steps,))
-            z[:self.input_length] = ζ[:self.input_length]
-            η, σ, ρ = self.η_to_ψ.inv(ψ), self.σ_to_ς.inv(ς), self.ρ_to_φ.inv(φ)
+            z, γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)
+            if fc_steps > 0:
+                z = torch.cat([z, torch.zeros(fc_steps)])
             # project states forward
             for t in range(self.input_length, self.input_length + fc_steps):
                 z[t] = z[t-1]*ρ + Normal(0, 1).sample()
