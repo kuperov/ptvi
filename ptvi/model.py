@@ -359,7 +359,6 @@ class VIModel(object):
         self.u = torch.tensor(torch.zeros(self.d), requires_grad=True)
         self.L = torch.tensor(torch.eye(self.d), requires_grad=True)
         self.parameters = [self.u, self.L]
-        self.q = MultivariateNormal(self.u, scale_tril=self.L)
 
         self.optimizer = torch.optim.Adadelta(self.parameters)
 

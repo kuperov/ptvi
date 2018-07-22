@@ -33,7 +33,7 @@ class UnivariateGaussian(VIModel):
             E_ln_pr_hat += (self.μ_prior.log_prob(μ)
                             + self.η_prior.log_prob(η))/self.num_draws
             if self.stochastic_entropy:
-                H_q_hat += self.q.log_prob(ζ)/self.num_draws
+                H_q_hat += q.log_prob(ζ)/self.num_draws
         return E_ln_lik_hat + E_ln_pr_hat - H_q_hat
 
 
