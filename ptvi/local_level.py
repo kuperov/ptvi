@@ -17,35 +17,22 @@ class LocalLevelModel(VIModel):
     σ = global_param(prior=InvGamma(1, 5), transform='log', rename='ς')
     ρ = global_param(prior=Beta(1, 1), transform='logit', rename='φ')
 
-    def elbo_hat(self, y):
-        L = torch.tril(self.L)
-        E_ln_lik_hat, E_ln_pr_hat, H_q_hat = 0., 0., 0.  # accumulators
-
-        q = MultivariateNormal(loc=self.u, scale_tril=L)
-        if not self.stochastic_entropy:
-            H_q_hat = q.entropy()
-
-        for _ in range(self.num_draws):
-            ζ = self.u + L@torch.randn((self.d,))  # reparam trick
-            z, γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)
-            ar1_uncond_var = torch.pow((1 - torch.pow(ρ, 2)), -0.5)
-            llikelihood = (
-                Normal(γ + η * z, σ).log_prob(y).sum()
-                + Normal(ρ * z[:-1], 1).log_prob(z[1:]).sum()
-                + Normal(0., ar1_uncond_var).log_prob(z[0])
-            )
-            E_ln_lik_hat += llikelihood/self.num_draws
-            lprior = (
-                self.γ_prior.log_prob(γ)
-                + self.η_prior.log_prob(η)
-                + self.ς_prior.log_prob(ς)
-                + self.φ_prior.log_prob(φ)
-            )
-            E_ln_pr_hat += lprior/self.num_draws
-            if self.stochastic_entropy:
-                H_q_hat += q.log_prob(ζ)/self.num_draws
-
-        return E_ln_lik_hat + E_ln_pr_hat - H_q_hat
+    def ln_joint(self, y, ζ):
+        """Computes the log likelihood plus the log prior at ζ."""
+        z, γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)
+        ar1_uncond_var = torch.pow((1 - torch.pow(ρ, 2)), -0.5)
+        llikelihood = (
+            Normal(γ + η * z, σ).log_prob(y).sum()
+            + Normal(ρ * z[:-1], 1).log_prob(z[1:]).sum()
+            + Normal(0., ar1_uncond_var).log_prob(z[0])
+        )
+        lprior = (
+            self.γ_prior.log_prob(γ)
+            + self.η_prior.log_prob(η)
+            + self.ς_prior.log_prob(ς)
+            + self.φ_prior.log_prob(φ)
+        )
+        return llikelihood + lprior
 
     def simulate(self, γ: float, η: float, σ: float, ρ: float):
         z = torch.empty([self.input_length])
@@ -78,25 +65,3 @@ class LocalLevelModel(VIModel):
                 z[t] = z[t-1]*ρ + Normal(0, 1).sample()
             paths[i, :] = Normal(γ + η*z, σ).sample()
         return paths
-
-
-if __name__ == '__main__' and '__file__' in globals():
-    torch.manual_seed(123)
-    γ0, η0, σ0, ρ0 = 0., 2., 1.5, 0.92
-    y, z = LocalLevelModel(input_length=100).simulate(γ=γ0, η=η0, σ=σ0, ρ=ρ0)
-
-    m = LocalLevelModel(input_length=100, stochastic_entropy=True, num_draws=1,
-                        stop_heur=NoImprovementStoppingHeuristic())
-    m.optimizer = torch.optim.Adadelta(m.parameters)
-    fit = m.training_loop(y)
-    print(fit.summary())
-    fit.plot_elbos()
-    plt.show()
-    fit.plot_latent(true_z=z.numpy(), include_data=True)
-    plt.show()
-    # fit.plot_elbos()
-    # plt.show()
-    # fit.plot_sampled_paths(200, true_y=y, fc_steps=10)
-    # plt.show()
-    # fit.plot_pred_ci(true_y=y, fc_steps=10)
-    # plt.show()

@@ -381,6 +381,28 @@ class VIModel(object):
             index += p.dimension
         return tuple(unpacked)
 
+    def elbo_hat(self, y):
+        L = torch.tril(self.L)
+        E_ln_joint, H_q_hat = 0., 0.  # accumulators
+
+        q = MultivariateNormal(loc=self.u, scale_tril=L)
+        if not self.stochastic_entropy:
+            H_q_hat = q.entropy()
+
+        for _ in range(self.num_draws):
+            ζ = self.u + L@torch.randn((self.d,))  # reparam trick
+
+            E_ln_joint += self.ln_joint(y, ζ) / self.num_draws
+
+            if self.stochastic_entropy:
+                H_q_hat += q.log_prob(ζ)/self.num_draws
+
+        return E_ln_joint - H_q_hat
+
+    def ln_joint(self, y, ζ):
+        """Computes the log likelihood plus the log prior at ζ."""
+        raise NotImplementedError
+
     def print(self, *args):
         """Print function that only does anything if quiet is False."""
         if not self.quiet:
@@ -412,6 +434,9 @@ class VIModel(object):
             self.optimizer.zero_grad()
             objective = -self.elbo_hat(y)
             objective.backward()
+            if torch.isnan(objective.data):
+                self.print_status(i, -smoothed_objective)
+                raise Exception('Infinite objective; cannot continue.')
             self.optimizer.step()
             elbo_hats.append(-objective.data)
             smoothed_objective = λ*objective.data + (1. - λ)*smoothed_objective
@@ -436,10 +461,12 @@ class VIModel(object):
     def __str__(self):
         _entr = 'Stochastic' if self.stochastic_entropy else 'Analytic'
         _oname = type(self.optimizer).__name__
-        lines = [f"{self.name}:\n"
-                 f"  - {_entr} entropy term with M={self.num_draws};\n"
-                 f"  - {str(self.stop_heur)}",
-                 f'  - {_oname} optimizer with param groups:']
+        lines = [f"{self.name}:"]
+        if self.input_length is not None:
+            lines.append(f'  - input length {self.input_length}')
+        lines += [f"  - {_entr} entropy term with M={self.num_draws};",
+                  f"  - {str(self.stop_heur)}",
+                  f'  - {_oname} optimizer with param groups:']
         for i, pg in enumerate(self.optimizer.param_groups):
             desc = ', '.join(f'{k}={v}' for k, v in pg.items() if k != 'params')
             lines.append(f'    group {i}. {desc}')

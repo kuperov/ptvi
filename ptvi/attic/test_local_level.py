@@ -18,8 +18,8 @@ class TestUnivariateLocalLevel(unittest.TestCase):
         import numbers
         rs = np.random.RandomState(seed=123)
         z, y = self.model.simulate(γ=100., η=2., σ=1.5, ρ=0.8, rs=rs)
-        ll_at_true = self.model.log_joint(y=y, z=z, γ=100., η=2., σ=1.5, ρ=0.8)
-        ll_alt = self.model.log_joint(y=y, z=z, γ=200., η=-2., σ=0.5, ρ=-0.8)
+        ll_at_true = self.model.ln_joint(y=y, z=z, γ=100., η=2., σ=1.5, ρ=0.8)
+        ll_alt = self.model.ln_joint(y=y, z=z, γ=200., η=-2., σ=0.5, ρ=-0.8)
         self.assertIsInstance(ll_at_true, numbers.Number)
         self.assertGreater(ll_at_true, ll_alt)
         ς, φ = self.model.T(σ=1.5, ρ=0.8)
