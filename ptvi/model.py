@@ -286,6 +286,25 @@ class VIModel(object):
 
         self.optimizer = torch.optim.Adadelta(self.parameters)
 
+    def unpack(self, ζ:torch.Tensor):
+        """Unstack the vector ζ into individual parameters, in the order given
+        in self.params. For transformed parameters, both optimization and
+        natural parameters are returned as a tuple.
+        """
+        assert ζ.shape == (self.d,), f'Expected 1-tensor of length {self.d}'
+        unpacked = []
+        index = 0
+        for p in self.params:
+            opt_p = ζ[index:index+p.dimension]
+            if isinstance(p, TransformedModelParameter):
+                # transform parameter *back* to natural coordinates
+                nat_p = p.transform.inv(opt_p)
+                unpacked.append((nat_p, opt_p))
+            else:
+                unpacked.append(opt_p)
+            index += p.dimension
+        return tuple(unpacked)
+
     def print(self, *args):
         """Print function that only does anything if quiet is False."""
         if not self.quiet:
@@ -336,7 +355,7 @@ class VIModel(object):
         return result
 
     def print_status(self, i, elbo_hat):
-        self.print(f'{i: 8d}. smoothed elbo_hat ={elbo_hat:12.2f}')
+        self.print(f'{i: 8d}. smoothed elbo_hat ={float(elbo_hat):12.2f}')
 
     def __str__(self):
         _entr = 'Stochastic' if self.stochastic_entropy else 'Analytic'
