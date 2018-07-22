@@ -1,5 +1,6 @@
 import torch
-from torch.distributions import Normal, ExpTransform, LogNormal
+from torch.distributions import (
+    Normal, ExpTransform, LogNormal, MultivariateNormal)
 from ptvi import VIModel, ModelParameter, TransformedModelParameter
 
 
@@ -19,22 +20,24 @@ class UnivariateGaussian(VIModel):
 
     def simulate(self, N: int, μ0: float, σ0: float):
         assert N > 2 and σ0 > 0
-        return μ0 + σ0 * torch.randn((N,))
+        return Normal(μ0, σ0).sample((N,))
 
     def elbo_hat(self, y):
+        L = torch.tril(self.L)
         E_ln_lik_hat, E_ln_pr_hat, H_q_hat = 0., 0., 0.  # accumulators
 
+        q = MultivariateNormal(loc=self.u, scale_tril=L)
+        if not self.stochastic_entropy:
+            H_q_hat = q.entropy()
+
         for _ in range(self.num_draws):
-            ζ = self.u + self.L@torch.randn((2,))
-            μ, η = ζ[0], ζ[1]  # unpack drawn parameter
-            σ = self.σ_to_η.inv(η)  # transform to user parameters
+            ζ = self.u + L@torch.randn((2,))
+            μ, (σ, η) = self.unpack(ζ)
             E_ln_lik_hat += Normal(μ, σ).log_prob(y).sum()/self.num_draws
             E_ln_pr_hat += (self.μ_prior.log_prob(μ)
                             + self.η_prior.log_prob(η))/self.num_draws
             if self.stochastic_entropy:
                 H_q_hat += self.q.log_prob(ζ)/self.num_draws
-        if not self.stochastic_entropy:
-            H_q_hat = self.q.entropy()
         return E_ln_lik_hat + E_ln_pr_hat - H_q_hat
 
 
