@@ -1,7 +1,7 @@
 import torch
 from torch.distributions import (
     Normal, ExpTransform, LogNormal, MultivariateNormal)
-from ptvi import VIModel, ModelParameter, TransformedModelParameter
+from ptvi import VIModel, global_param
 
 
 class UnivariateGaussian(VIModel):
@@ -11,12 +11,8 @@ class UnivariateGaussian(VIModel):
     For the optimization, we transform σ -> ln(σ) = η to ensure σ > 0.
     """
     name = 'Univariate Gaussian model'
-    params = [
-        ModelParameter(name='μ', prior=Normal(0., 10.)),
-        TransformedModelParameter(
-            name='σ', prior=LogNormal(0., 10.),
-            transformed_name='η', transform=ExpTransform().inv)
-    ]
+    μ = global_param(prior=Normal(0., 10.))
+    σ = global_param(prior=LogNormal(0., 10.), rename='η', transform='log')
 
     def simulate(self, N: int, μ0: float, σ0: float):
         assert N > 2 and σ0 > 0

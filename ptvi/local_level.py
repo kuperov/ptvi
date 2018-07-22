@@ -3,8 +3,7 @@ from torch.distributions import *
 import matplotlib.pyplot as plt
 from ptvi.stopping import *
 from ptvi.dist import InvGamma
-from ptvi import (VIModel, VITimeSeriesResult, ModelParameter, LocalParameter,
-                  TransformedModelParameter)
+from ptvi import (VIModel, VITimeSeriesResult, local_param, global_param)
 
 
 class LocalLevelModel(VIModel):
@@ -12,19 +11,11 @@ class LocalLevelModel(VIModel):
 
     result_class = VITimeSeriesResult
     name = 'Local level model'
-    params = [
-        LocalParameter(name='z', prior=Beta(0, 0)),
-        ModelParameter(name='γ', prior=Normal(0, 3)),
-        TransformedModelParameter(
-            name='η', prior=Normal(0, 3), transformed_name='ψ',
-            transform=ExpTransform().inv),
-        TransformedModelParameter(
-            name='σ', prior=InvGamma(1, 5), transformed_name='ς',
-            transform=ExpTransform().inv),
-        TransformedModelParameter(
-            name='ρ', prior=Beta(1, 1), transformed_name='φ',
-            transform=SigmoidTransform().inv)
-    ]
+    z = local_param()
+    γ = global_param(prior=Normal(0, 3))
+    η = global_param(prior=Normal(0, 3), transform='log', rename='ψ')
+    σ = global_param(prior=InvGamma(1, 5), transform='log', rename='ς')
+    ρ = global_param(prior=Beta(1, 1), transform='logit', rename='φ')
 
     def elbo_hat(self, y):
         L = torch.tril(self.L)
