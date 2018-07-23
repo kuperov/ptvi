@@ -1,9 +1,12 @@
 import math
 import tests.test_util
 from ptvi import *
+from ptvi.model import (
+    _LocalParameter, _ModelParameter, _TransformedModelParameter)
 from torch.distributions import (
     Normal, LogNormal, TransformedDistribution, Transform)
 import torch
+
 
 class TestGaussianModel(tests.test_util.TorchTestCase):
 
@@ -34,12 +37,12 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
             b = global_param(prior=InvGamma(2, 2), transform='log')
 
         m = TestModel(input_length=10)
-        self.assertIsInstance(m.z, LocalParameter)
+        self.assertIsInstance(m.z, _LocalParameter)
         self.assertEqual(m.z.name, 'z')
         self.assertIsInstance(m.z.prior, Improper)
-        self.assertIsInstance(m.a, ModelParameter)
+        self.assertIsInstance(m.a, _ModelParameter)
 
-        self.assertIsInstance(m.b, TransformedModelParameter)
+        self.assertIsInstance(m.b, _TransformedModelParameter)
         self.assertEqual(m.b.name, 'b')
         self.assertEqual(m.b.transform_desc, 'log')
         self.assertEqual(m.b.transformed_name, 'log_b')

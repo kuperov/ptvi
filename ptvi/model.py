@@ -16,7 +16,7 @@ from ptvi import StoppingHeuristic, NoImprovementStoppingHeuristic, plot_dens, I
 _DIVIDER = "―"*80
 
 
-class ModelParameter(object):
+class _ModelParameter(object):
     """A parameter in a model.
 
     Attrs:
@@ -49,7 +49,7 @@ class ModelParameter(object):
         return f"{self.name} with prior {self.prior}"
 
 
-class TransformedModelParameter(ModelParameter):
+class _TransformedModelParameter(_ModelParameter):
     """A parameter that has been transformed to an unrestricted space.
 
     Attrs:
@@ -95,7 +95,7 @@ class TransformedModelParameter(ModelParameter):
                 f"{self.transformed_name} by {self.transform}")
 
 
-class LocalParameter(ModelParameter):
+class _LocalParameter(_ModelParameter):
     """A local model parameter.
 
     For now local parameters are assumed not transformable and dimension 1.
@@ -123,7 +123,7 @@ def global_param(prior: Distribution=None, name: str=None,
     if rename is not None and transform is None:
         raise Exception('rename requires a transform')
     if transform is None:
-        return ModelParameter(name=name, prior=prior)
+        return _ModelParameter(name=name, prior=prior)
     transform_desc = 'transformed'
     if isinstance(transform, str):
         transform_desc = transform
@@ -143,7 +143,7 @@ def global_param(prior: Distribution=None, name: str=None,
             raise Exception(f'Unknown transform {transform}')
     if rename is None and name is not None:
         rename = f'{transform_desc}_{name}'
-    return TransformedModelParameter(
+    return _TransformedModelParameter(
         name=name, prior=prior, transform=transform, transformed_name=rename,
         transform_desc=transform_desc)
 
@@ -157,7 +157,7 @@ def local_param(prior: Distribution=None, name: str=None):
     """
     if prior is None:
         prior = Improper()
-    return LocalParameter(name=name, prior=prior)
+    return _LocalParameter(name=name, prior=prior)
 
 
 class VIResult(object):
@@ -179,7 +179,7 @@ class VIResult(object):
             if p.dimension > 1:
                 continue
             # construct marginals in optimization space
-            if isinstance(p, TransformedModelParameter):
+            if isinstance(p, _TransformedModelParameter):
                 tfm_post_marg = Normal(self.u[p.index], sds[p.index])
                 setattr(self, p.tfm_post_marg_name, tfm_post_marg)
 
@@ -329,9 +329,9 @@ class VIModel(object):
         self.stop_heur = stop_heur or NoImprovementStoppingHeuristic()
         self.quiet, self.input_length = quiet, input_length
 
-        self.params: List[ModelParameter] = []
+        self.params: List[_ModelParameter] = []
         for attr, a in type(self).__dict__.items():
-            if not isinstance(a, ModelParameter):
+            if not isinstance(a, _ModelParameter):
                 continue
             a.inferred_name(attr)
             self.params.append(a)
@@ -343,11 +343,11 @@ class VIModel(object):
             prior_name = f'{p.name}_prior'  # e.g. self.σ_prior()
             setattr(self, prior_name, p.prior)
 
-            if isinstance(p, LocalParameter):
+            if isinstance(p, _LocalParameter):
                 if input_length is None:
                     raise Exception('Data length required for local variables')
                 p.dimension = input_length
-            elif isinstance(p, TransformedModelParameter):
+            elif isinstance(p, _TransformedModelParameter):
                 tfm_name = f'{p.name}_to_{p.transformed_name}'
                 setattr(self, tfm_name, p.transform)  # e.g. self.σ_to_φ()
                 tfm_prior_name = f'{p.transformed_name}_prior'
@@ -375,7 +375,7 @@ class VIModel(object):
         index = 0
         for p in self.params:
             opt_p = ζ[index:index+p.dimension]
-            if isinstance(p, TransformedModelParameter):
+            if isinstance(p, _TransformedModelParameter):
                 # transform parameter *back* to natural coordinates
                 nat_p = p.transform.inv(opt_p)
                 unpacked.append((nat_p, opt_p))
