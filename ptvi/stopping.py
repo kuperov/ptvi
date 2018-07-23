@@ -65,9 +65,10 @@ class NoImprovementStoppingHeuristic(StoppingHeuristic):
     early_stop() returns true.
     """
 
-    def __init__(self, patience=10, skip=1, ε=.01, α=.1):
+    def __init__(self, patience=10, skip=1, min_steps=100, ε=.01, α=.1):
         assert 0. < α <= 1.
         self.skip, self.patience, self.α, self.ε = skip, patience, α, ε
+        self.min_steps = min_steps
         self.i = -1
         self.no_improvement_count = 0
         self.curr_elbo, self.past_elbo = None, None
@@ -79,7 +80,7 @@ class NoImprovementStoppingHeuristic(StoppingHeuristic):
             self.curr_elbo = est_elbo * self.α + (1. - self.α) * self.curr_elbo
             if est_elbo > self.curr_elbo + self.ε:
                 self.no_improvement_count = 0
-            else:
+            elif self.i > self.min_steps:
                 self.no_improvement_count += 1
         else:
             self.curr_elbo = est_elbo
@@ -88,4 +89,4 @@ class NoImprovementStoppingHeuristic(StoppingHeuristic):
     def __str__(self):
         return (
             f'Stop on no improvement (skip={self.skip}, patience={self.patience},'
-            f' ε={self.ε}, α={self.α})')
+            f' min_steps={self.min_steps}, ε={self.ε}, α={self.α})')

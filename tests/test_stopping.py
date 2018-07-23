@@ -24,7 +24,7 @@ class TestEarlyStoppingRules(unittest.TestCase):
         self.assertTrue(20 < i < 40-1, "Rule didn't fire in 1st quadrant")
 
     def test_no_improvement_stopping_heuristic(self):
-        nish = NoImprovementStoppingHeuristic(skip=1, α=0.1)
+        nish = NoImprovementStoppingHeuristic(skip=1, α=0.1, min_steps=0)
         # test with a sine curve: increasing then decreasing; should stop in
         # shortly after pi/2 radians (20 steps)
         i = 0
