@@ -212,9 +212,10 @@ class VIResult(object):
                 sds.append(float(torch.std(xs)))
         return pd.DataFrame({'mean': means, 'sd': sds}, index=names)
 
-    def plot_elbos(self):
+    def plot_elbos(self, skip=0):
         plt.figure()
-        plt.plot(self.elbo_hats)
+        xs = range(skip, len(self.elbo_hats))
+        plt.plot(xs, self.elbo_hats[skip:])
         plt.title(r'$\hat L$ by iteration')
 
     def plot_latent(self, true_z=None, include_data=False):
@@ -476,7 +477,7 @@ class VIModel(object):
     def print_status(self, i, elbo_hat):
         self.print(f'{i: 8d}. smoothed elbo_hat ={float(elbo_hat):12.2f}')
 
-    def map(self, y, ζ0=None, max_iters=20, ε=1e-4):
+    def map(self, y, ζ0=None, max_iters=20, ε=1e-4, **kwargs):
         """Compute the maximum a postiori (MAP) by maximizing the log joint
         function with respect to the parameter ζ (in optimization space).
 
@@ -488,7 +489,7 @@ class VIModel(object):
             ζ = torch.tensor(ζ0, requires_grad=True)
         else:
             ζ = torch.zeros(self.d, requires_grad=True)
-        optimizer = torch.optim.LBFGS([ζ])
+        optimizer = torch.optim.LBFGS([ζ], **kwargs)
         last_loss, t = None, -time()
         for i in range(max_iters):
             def closure():
@@ -498,7 +499,9 @@ class VIModel(object):
                 return loss
             loss = optimizer.step(closure)
             self.print(f'{i:8d}. ll = {-float(loss.data):.4f}')
-            if last_loss and last_loss < loss + ε:
+            if torch.isnan(loss):
+                raise Exception('Non-finite loss encountered.')
+            elif last_loss and last_loss < loss + ε:
                 self.print('Convergence criterion met.')
                 break
             last_loss = loss
@@ -533,11 +536,11 @@ class VIModel(object):
             hessian[idx] = g2
         return grad[0].detach(), hessian.detach()
 
-    def initial_conditions(self, y):
+    def initial_conditions(self, y, ζ0=None, **kwargs):
         """Hacky initial conditions. MAP for initial guess, block-diagonal
         covariance function.
         """
-        ζ = self.map(y)
+        ζ = self.map(y, ζ0=ζ0, **kwargs)
         mask = torch.zeros((self.d, self.d))
         index = 0
         for p in self.params:
