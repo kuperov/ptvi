@@ -244,7 +244,7 @@ class VIResult(object):
         plt.title('Data')
 
     def plot_marg_post(self, variable:str, suffix='', true_val:float=None,
-                       new_figure=True, plot_prior=True):
+                       plot_prior=True):
         """Plot marginal posterior distribution, prior, and optionally the
         true value.
         """
@@ -253,6 +253,8 @@ class VIResult(object):
         # figure out range by sampling from posterior
         variates = post.sample((100,))
         a, b = min(variates), max(variates)
+        if true_val:
+            a, b = min(a, true_val), max(b, true_val)
         xs = torch.linspace(a-(b-a)/4., b+(b-a)/4., 500)
 
         def plotpdf(p, label=''):
@@ -266,6 +268,19 @@ class VIResult(object):
         if true_val is not None:
             plt.axvline(true_val, label=f'${variable}{suffix}$', linestyle='--')
         plt.legend()
+
+    def plot_global_marginals(self, cols=2, true_vals=None):
+        import math
+        true_vals = true_vals or {}
+        params = [p for p in self.model.params
+                  if not isinstance(p, _LocalParameter)]
+        rows = round(math.ceil(len(params) / cols))
+        for r in range(rows):
+            for c in range(cols):
+                plt.subplot(rows, cols, r*cols + c + 1)
+                p = params[r * cols + c]
+                self.plot_marg_post(p.name, true_val=true_vals.get(p.name, None))
+        plt.tight_layout()
 
 
 class VITimeSeriesResult(VIResult):
@@ -453,7 +468,7 @@ class VIModel(object):
         t += time()
         self.print_status(i, -smoothed_objective)
         self.print(
-            f'Completed {i+1} iterations in {t:.1f}s @ {i/(t+1):.2f} i/s.\n'
+            f'Completed {i+1} iterations in {t:.1f}s @ {(i+1)/t:.2f} i/s.\n'
             f'{_DIVIDER}')
         result = self.result_class(model=self, elbo_hats=elbo_hats, y=y)
         return result
@@ -467,7 +482,7 @@ class VIModel(object):
 
         Call self.unpack() to convert parameters in natural coordinates.
         """
-        self.print(f'{_DIVIDER}\nMAP inference with BGFS\n\n{str(self)}\n'
+        self.print(f'{_DIVIDER}\nMAP inference with L-BGFS: {self.name}\n'
                    f'{_DIVIDER}')
         if ζ0 is not None:
             ζ = torch.tensor(ζ0, requires_grad=True)
@@ -490,7 +505,9 @@ class VIModel(object):
         else:
             self.print('WARNING: maximum iterations reached.')
         self.print(f'{i:8d}. ll = {-float(loss.data):.4f}')
-        self.print(f'Completed {i+1:d} iterations in {t+time():.2f}s.')
+        t += time()
+        self.print(f'Completed {i+1:d} iterations in {t:.2f}s '
+                   f'@ {(i+1)/t:.2f} i/s.')
         self.print(_DIVIDER)
         return ζ.detach()
 
