@@ -63,7 +63,6 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
         torch.manual_seed(123)
         N, μ0, σ0 = 100, 5., 5.
         y = model.simulate(N=N, μ0=μ0, σ0=σ0)
-        #ζ = torch.tensor([μ0, math.log(σ0)])
         ζ = model.map(y)
         g, H = model.ln_joint_grad_hessian(y, ζ)
         self.assertIsInstance(g, torch.Tensor)
@@ -71,6 +70,13 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
         self.assertIsInstance(H, torch.Tensor)
         self.assertEqual(H.shape, (model.d, model.d))
 
-        sandwich = model.ln_join_sandwich_variance(y, ζ)
-        self.assertIsInstance(sandwich, torch.Tensor)
-        self.assertEqual(sandwich.shape, (model.d, model.d))
+    def test_initial_conditions(self):
+        model = UnivariateGaussian(quiet=True)
+        torch.manual_seed(123)
+        N, μ0, σ0 = 100, 5., 5.
+        y = model.simulate(N=N, μ0=μ0, σ0=σ0)
+        u, L = model.initial_conditions(y)
+        self.assertIsInstance(u, torch.Tensor)
+        self.assertIsInstance(L, torch.Tensor)
+        self.assertEqual(u.shape, (model.d,))
+        self.assertEqual(L.shape, (model.d, model.d))

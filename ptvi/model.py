@@ -451,7 +451,7 @@ class VIModel(object):
         else:
             self.print('WARNING: maximum iterations reached.')
         t += time()
-        self.print_status(i + 1, -smoothed_objective)
+        self.print_status(i, -smoothed_objective)
         self.print(
             f'Completed {i+1} iterations in {t:.1f}s @ {i/(t+1):.2f} i/s.\n'
             f'{_DIVIDER}')
@@ -514,7 +514,22 @@ class VIModel(object):
                     [g2, g.contiguous().view(-1)])
                 cnt = 1
             hessian[idx] = g2
-        return grad[0].detach(), hessian
+        return grad[0].detach(), hessian.detach()
+
+    def initial_conditions(self, y):
+        """Hacky initial conditions. MAP for initial guess, block-diagonal
+        covariance function.
+        """
+        ζ = self.map(y)
+        mask = torch.zeros((self.d, self.d))
+        index = 0
+        for p in self.params:
+            mask[index:index+p.dimension, index:index+p.dimension] = 1
+            index += p.dimension
+        _, H = self.ln_joint_grad_hessian(y, ζ)
+        nHinv = torch.inverse(-mask * H)
+        Lv = torch.potrf(nHinv, upper=False)
+        return ζ, Lv
 
     def sample_paths(self, N=100, fc_steps=0):
         """Sample N paths from the model, forecasting fc_steps additional steps.
