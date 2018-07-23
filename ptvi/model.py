@@ -454,14 +454,14 @@ class VIModel(object):
         self.print_status(i + 1, -smoothed_objective)
         self.print(
             f'Completed {i+1} iterations in {t:.1f}s @ {i/(t+1):.2f} i/s.\n'
-            f'{"="*80}')
+            f'{_DIVIDER}')
         result = self.result_class(model=self, elbo_hats=elbo_hats, y=y)
         return result
 
     def print_status(self, i, elbo_hat):
         self.print(f'{i: 8d}. smoothed elbo_hat ={float(elbo_hat):12.2f}')
 
-    def map(self, y, max_iters=20, ε=1e-4):
+    def map(self, y, ζ0=None, max_iters=20, ε=1e-4):
         """Compute the maximum a postiori (MAP) by maximizing the log joint
         function with respect to the parameter ζ (in optimization space).
 
@@ -469,7 +469,10 @@ class VIModel(object):
         """
         self.print(f'{_DIVIDER}\nMAP inference with BGFS\n\n{str(self)}\n'
                    f'{_DIVIDER}')
-        ζ = torch.zeros(self.d, requires_grad=True)
+        if ζ0 is not None:
+            ζ = torch.tensor(ζ0, requires_grad=True)
+        else:
+            ζ = torch.zeros(self.d, requires_grad=True)
         optimizer = torch.optim.LBFGS([ζ])
         last_loss, t = None, -time()
         for i in range(max_iters):
@@ -492,12 +495,12 @@ class VIModel(object):
         return ζ.detach()
 
     # https://discuss.pytorch.org/t/compute-the-hessian-matrix-of-a-network/15270#post_3
-    def ln_joint_hessian(self, y, ζ):
+    def ln_joint_grad_hessian(self, y, ζ):
         z = torch.tensor(ζ, requires_grad=True)
         lj = self.ln_joint(y, z)
-        loss_grad = torch.autograd.grad(lj, z, create_graph=True)
+        grad = torch.autograd.grad(lj, z, create_graph=True)
         cnt = 0
-        for g in loss_grad:
+        for g in grad:
             g_vector = g.contiguous().view(-1) if cnt == 0 else torch.cat(
                 [g_vector, g.contiguous().view(-1)])
             cnt = 1
@@ -511,7 +514,36 @@ class VIModel(object):
                     [g2, g.contiguous().view(-1)])
                 cnt = 1
             hessian[idx] = g2
-        return hessian
+        return grad[0].detach(), hessian
+
+    def sample_paths(self, N=100, fc_steps=0):
+        """Sample N paths from the model, forecasting fc_steps additional steps.
+
+        Args:
+            N:        number of paths to sample
+            fc_steps: number of steps to project forward
+
+        Returns:
+            Nx(τ+fc_steps) tensor of sample paths
+        """
+        paths = torch.empty((N, self.input_length + fc_steps))
+        ζs = MultivariateNormal(self.u, scale_tril=self.L).sample((N,))
+        for i in range(N):
+            ζ = ζs[i]
+            paths[i, :] = self.sample_observed(ζ, fc_steps=fc_steps)
+        return paths
+
+    def sample_observed(self, ζ, fc_steps=0):
+        """Sample a path from the model, forecasting fc_steps additional steps,
+        given parameters ζ (in transformed space).
+
+        Args:
+            fc_steps: number of steps to project forward
+
+        Returns:
+            1-tensor of sample paths of length (input_length+fc_steps)
+        """
+        raise NotImplementedError
 
     def __str__(self):
         _entr = 'Stochastic' if self.stochastic_entropy else 'Analytic'
