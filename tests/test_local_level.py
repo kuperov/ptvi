@@ -1,5 +1,5 @@
 import unittest
-from ptvi.local_level import *
+from ptvi.models.local_level import *
 from unittest.mock import patch
 
 

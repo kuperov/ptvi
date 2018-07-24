@@ -6,6 +6,4 @@ from .stopping import (ExponentialStoppingHeuristic, NullStoppingHeuristic,
                        NoImprovementStoppingHeuristic, StoppingHeuristic,
                        MedianGrowthStoppingHeuristic)
 from .model import (VIModel, VIResult, VITimeSeriesResult, local_param, global_param)
-from .gaussian import UnivariateGaussian
-from .local_level import LocalLevelModel
-from .stoch_vol import StochVolModel
+from ptvi.models import *

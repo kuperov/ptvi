@@ -13,7 +13,7 @@ class LocalLevelModel(VIModel):
     γ = global_param(prior=Normal(0, 3))
     η = global_param(prior=LogNormal(0, 3), transform='log', rename='ψ')
     σ = global_param(prior=InvGamma(1, 5), transform='log', rename='ς')
-    ρ = global_param(prior=Beta(1, 1), transform='logit', rename='φ')
+    ρ = global_param(prior=Beta(2, 2), transform='logit', rename='φ')
 
     def ln_joint(self, y, ζ):
         """Computes the log likelihood plus the log prior at ζ."""

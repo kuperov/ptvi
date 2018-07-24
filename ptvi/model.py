@@ -469,7 +469,7 @@ class VIModel(object):
         t += time()
         self.print_status(i, -smoothed_objective)
         self.print(
-            f'Completed {i+1} iterations in {t:.1f}s @ {(i+1)/t:.2f} i/s.\n'
+            f'Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n'
             f'{_DIVIDER}')
         result = self.result_class(model=self, elbo_hats=elbo_hats, y=y)
         return result
