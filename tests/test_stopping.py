@@ -1,8 +1,9 @@
 import math
 import unittest
+import torch
 
 from ptvi import (ExponentialStoppingHeuristic, NullStoppingHeuristic,
-                  NoImprovementStoppingHeuristic)
+                  NoImprovementStoppingHeuristic, MedianGrowthStoppingHeuristic)
 
 
 class TestEarlyStoppingRules(unittest.TestCase):
@@ -33,3 +34,19 @@ class TestEarlyStoppingRules(unittest.TestCase):
             if nish.early_stop(elbo):
                 break
         self.assertTrue(20 < i < 40-1, "Rule didn't fire in 1st quadrant")
+
+    def test_minimum_median_improvement_rate(self):
+        length, initial = 200, -100.
+
+        def stop_with_drift(drift):
+            elbos = torch.cumsum(torch.randn((length)) + drift, 0)
+            h = MedianGrowthStoppingHeuristic(skip=1, patience=10, ε=0.1,
+                                              min_steps=50)
+            for i in range(length):
+                if h.early_stop(elbos[i]):
+                    return i
+            return -1
+
+        torch.manual_seed(123)
+        self.assertTrue(stop_with_drift(10./10.) == -1)
+        self.assertTrue(stop_with_drift(0.5/10.) > 50)

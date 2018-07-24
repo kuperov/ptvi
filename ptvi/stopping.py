@@ -1,4 +1,5 @@
 from typing import List
+import numpy as np
 
 
 class StoppingHeuristic(object):
@@ -88,5 +89,47 @@ class NoImprovementStoppingHeuristic(StoppingHeuristic):
 
     def __str__(self):
         return (
-            f'Stop on no improvement (skip={self.skip}, patience={self.patience},'
-            f' min_steps={self.min_steps}, ε={self.ε}, α={self.α})')
+            f'Stop on no improvement (skip={self.skip}, '
+            f'patience={self.patience}, min_steps={self.min_steps}, '
+            f'ε={self.ε}, α={self.α})')
+
+
+class MedianGrowthStoppingHeuristic(StoppingHeuristic):
+    """Impose a minimum rate of improvement in the median elbo.
+
+    Every <skip> steps, we compute the median elbo estimate over the past
+    <skip>*<window> elbo evaluations. If this median has not increased by at
+    least ε in the last skip*patience steps, early_stop() returns true.
+    """
+
+    def __init__(self, patience:int =10, skip:int=1, min_steps:int=100, ε:float=.1):
+        assert min_steps > 2*patience
+        self.skip, self.patience, self.ε = skip, patience, ε
+        self.min_steps = min_steps
+        self.i = -1
+        self.elbo_circular_buffer: List[float] = [None] * patience
+        self.median_elbo_circular_buffer: List[float] = [None] * patience
+        self.no_improvement_count = 0
+
+    def early_stop(self, curr_elbo: float) -> bool:
+        self.i += 1
+        if self.i % self.skip:
+            return False  # only check every N iterations
+        buf_idx: int = (self.i // self.skip) % self.patience
+        self.elbo_circular_buffer[buf_idx] = curr_elbo
+        if self.i <= self.patience:
+            return False
+        this_median = np.median(self.elbo_circular_buffer)
+        if (self.i > self.patience*2 and
+            self.median_elbo_circular_buffer[buf_idx] + self.ε > this_median):
+            self.no_improvement_count = 0
+        elif self.i > self.patience*2:
+            self.no_improvement_count += 1
+        self.median_elbo_circular_buffer[buf_idx] = this_median
+        return (self.no_improvement_count == self.patience
+                and self.i > self.min_steps)
+
+    def __str__(self):
+        return (
+            f'Minimum median elbo improvement rate (min_steps={self.min_steps},'
+            f' patience={self.patience}, skip={self.skip}, ε={self.ε})')
