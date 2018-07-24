@@ -40,9 +40,18 @@ class StochVolModel(VIModel):
         return y, b
 
     def print_status(self, i, elbo_hat):
-        self.print(f'{i: 8d}. smoothed elbo_hat ={float(elbo_hat):12.2f}')
         # b, λ, (σ, log_σ), (φ, logit_φ) = self.unpack(self.u)
         b, (σ, log_σ), (φ, logit_φ) = self.unpack(self.u)
-        self.print(f'          '  # λ={float(λ):.2f} '
+        self.print(f'{i: 8d}. smoothed elbo_hat ={float(elbo_hat):12.2f}'
+                   f'  '  # λ={float(λ):.2f} '
                    f'σ={float(σ):.2f} log(σ)={float(log_σ):.2f} '
                    f'φ={float(φ):.2f} logit(φ)={float(logit_φ):.2f}')
+
+    def sample_observed(self, ζ, fc_steps=0):
+        b, (σ, α), (φ, ψ) = self.unpack(ζ)
+        λ = 0.
+        if fc_steps > 0:
+            b = torch.cat([b, torch.zeros(fc_steps)])
+        for t in range(self.input_length, self.input_length + fc_steps):
+            b[t] = b[t - 1] * φ + Normal(0, 1).sample()
+        return Normal(loc=0., scale=torch.exp(0.5 * (λ + σ * b))).sample()

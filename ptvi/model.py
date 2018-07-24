@@ -1,6 +1,6 @@
 from time import time
 from typing import List, Dict, Union
-from warnings import warn
+import collections
 
 import torch
 from torch.distributions import (
@@ -213,34 +213,35 @@ class VIResult(object):
         return pd.DataFrame({'mean': means, 'sd': sds}, index=names)
 
     def plot_elbos(self, skip=0):
-        plt.figure()
         xs = range(skip, len(self.elbo_hats))
         plt.plot(xs, self.elbo_hats[skip:])
         plt.title(r'$\hat L$ by iteration')
 
-    def plot_latent(self, true_z=None, include_data=False):
-        plt.figure()
-        zs = self.q.mean[:-4].numpy()
-        xs = torch.arange(len(zs)).numpy()
-        sds = torch.sqrt(self.q.variance).numpy()[:-4]
-        if include_data:
-            plt.subplot(211)
-            plt.plot(xs, self.y.numpy())
-            plt.title('Observed data')
-            plt.subplot(212)
-        plt.plot(xs, zs, label=r'$E[z_{1:\tau} | y]$')
-        plt.fill_between(xs, zs - sds, zs + sds, label=r'$\pm$ 1 SD',
-                         color='blue', alpha=0.1)
-        plt.title('Latent state')
-        if true_z is not None:
-            if isinstance(true_z, torch.Tensor):
-                true_z = true_z.numpy()
-            plt.plot(xs, true_z, label=r'$z_{0,1:\tau}$')
-        plt.legend()
+    def plot_latent(self, **true_vals):
+        true_vals = true_vals or {}
+        locals = [p for p in self.model.params
+                  if isinstance(p, _LocalParameter)]
+        fig, axes = plt.subplots(nrows=len(locals), ncols=1)
+        if not isinstance(axes, collections.Iterable):
+            axes = [axes]
+        for ax, p in zip(axes, locals):
+            zs = self.q.mean[p.index:p.index+p.dimension].numpy()
+            xs = torch.arange(len(zs)).numpy()
+            vars = self.q.variance[p.index:p.index+p.dimension]
+            sds = torch.sqrt(vars).numpy()
+            if p.name in true_vals:
+                true = true_vals[p.name]
+                if hasattr(true, 'numpy'):
+                    true = true.numpy()
+                plt.plot(xs, true, label=p.name)
+            plt.plot(xs, zs, label=f'$E[{p.name} | data]$')
+            plt.fill_between(xs, zs - sds, zs + sds, label=r'$\pm$ 1 SD',
+                             color='blue', alpha=0.1)
+            plt.title(f'Local variable - {p.name}')
+            plt.legend()
         plt.tight_layout()
 
     def plot_data(self):
-        plt.figure()
         plt.plot(self.y.numpy(), label='data')
         plt.title('Data')
 
@@ -270,9 +271,8 @@ class VIResult(object):
             plt.axvline(true_val, label=f'${variable}{suffix}$', linestyle='--')
         plt.legend()
 
-    def plot_global_marginals(self, cols=2, true_vals=None):
+    def plot_global_marginals(self, cols=2, **true_vals):
         import math
-        true_vals = true_vals or {}
         params = [p for p in self.model.params
                   if not isinstance(p, _LocalParameter)]
         rows = round(math.ceil(len(params) / cols))
