@@ -11,7 +11,7 @@ class LocalLevelModel(VIModel):
     result_class = VITimeSeriesResult
     z = local_param()
     γ = global_param(prior=Normal(0, 3))
-    η = global_param(prior=Normal(0, 3), transform='log', rename='ψ')
+    η = global_param(prior=LogNormal(0, 3), transform='log', rename='ψ')
     σ = global_param(prior=InvGamma(1, 5), transform='log', rename='ς')
     ρ = global_param(prior=Beta(1, 1), transform='logit', rename='φ')
 
@@ -26,7 +26,7 @@ class LocalLevelModel(VIModel):
         )
         lprior = (
             self.γ_prior.log_prob(γ)
-            + self.η_prior.log_prob(η)
+            + self.ψ_prior.log_prob(ψ)
             + self.ς_prior.log_prob(ς)
             + self.φ_prior.log_prob(φ)
         )
