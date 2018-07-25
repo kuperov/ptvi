@@ -7,7 +7,8 @@ from .stopping import (ExponentialStoppingHeuristic, NullStoppingHeuristic,
                        MedianGrowthStoppingHeuristic)
 from .model import Model
 from .params import local_param, global_param
-from ptvi.models.gaussian import UnivariateGaussian
-from ptvi.models.local_level import LocalLevelModel
-from ptvi.models.stoch_vol import StochVolModel
+# from .models.gaussian import UnivariateGaussian
+# from .models.local_level import LocalLevelModel
+# from .models.stoch_vol import StochVolModel
+from .models import *
 from .algos import *
