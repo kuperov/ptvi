@@ -4,7 +4,7 @@ import torch
 from time import time
 from torch.optim import Adadelta
 from torch.distributions import (
-    MultivariateNormal, Normal, TransformedDistribution)
+    Distribution, MultivariateNormal, Normal, TransformedDistribution)
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -95,7 +95,10 @@ def sgvb(model: Model,
         f'{i: 8d}. smoothed elbo ={float(-smoothed_objective):12.2f}\n'
         f'Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n'
         f'{_DIVIDER}')
-    return SGVBResult(model=model, elbo_hats=elbo_hats, y=y, u=u, L=L)
+    u: torch.Tensor = u.detach()
+    L: torch.Tensor = L.detach()
+    q = MultivariateNormal(u, scale_tril=L)
+    return SGVBResult(model=model, elbo_hats=elbo_hats, y=y, q=q)
 
 
 def header(optimizer, stochastic_entropy, stop_heur, model_name, num_draws, λ):
@@ -119,14 +122,9 @@ class SGVBResult(object):
     """Base class for representing model results."""
 
     def __init__(self, model: 'Model', elbo_hats: List[float], y: torch.Tensor,
-                 u: torch.Tensor, L: torch.Tensor):
-        self.elbo_hats, self.model, self.y = elbo_hats, model, y
-        self.u: torch.Tensor = u.detach()
-        self.L: torch.Tensor = L.detach()
+                 q: Distribution):
+        self.elbo_hats, self.model, self.y, self.q = elbo_hats, model, y, q
         self.input_length = len(y)
-
-        # posteriors are transformed from normal distributions
-        self.q = MultivariateNormal(self.u, scale_tril=self.L)
 
         sds = torch.sqrt(self.q.variance)
         for p in model.params:
@@ -135,7 +133,7 @@ class SGVBResult(object):
                 continue
             # construct marginals in optimization space
             if isinstance(p, TransformedModelParameter):
-                tfm_post_marg = Normal(self.u[p.index], sds[p.index])
+                tfm_post_marg = Normal(self.q.loc[p.index], sds[p.index])
                 setattr(self, p.tfm_post_marg_name, tfm_post_marg)
 
                 tfm_prior = getattr(model, p.tfm_prior_name)
@@ -145,7 +143,7 @@ class SGVBResult(object):
                 post_marg = TransformedDistribution(tfm_post_marg, tfm.inv)
                 setattr(self, p.post_marg_name, post_marg)
             else:
-                post_marg = Normal(self.u[p.index], sds[p.index])
+                post_marg = Normal(self.q.loc[p.index], sds[p.index])
                 setattr(self, p.post_marg_name, post_marg)
 
     def sample_paths(self, N=100, fc_steps=0):
@@ -159,7 +157,7 @@ class SGVBResult(object):
             Nx(τ+fc_steps) tensor of sample paths
         """
         paths = torch.empty((N, self.input_length + fc_steps))
-        ζs = MultivariateNormal(self.u, scale_tril=self.L).sample((N,))
+        ζs = self.q.sample((N,))
         for i in range(N):
             ζ = ζs[i]
             paths[i, :] = self.model.sample_observed(ζ, fc_steps=fc_steps)
