@@ -21,7 +21,9 @@ class TestLocalLevel(unittest.TestCase):
         torch.manual_seed(123)
         model = LocalLevelModel(input_length=100)
         y, z = model.simulate(γ=0., η=2., σ=1.5, ρ=0.85)
-        fit = map(model, y, quiet=True)
+        # numerically unstable as all hell, but this seems to pass ok
+        ζ0 = torch.cat([torch.tensor(y), torch.ones((4,))])
+        fit = map(model, y, ζ0=ζ0, quiet=True)
         self.assertIsInstance(fit, MAPResult)
         self.assertIsInstance(fit.ζ, torch.Tensor)
         self.assertEqual(fit.ζ.shape, (model.d,))
