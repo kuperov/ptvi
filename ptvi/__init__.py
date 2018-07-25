@@ -10,7 +10,7 @@ from .params import local_param, global_param
 # from .models.gaussian import UnivariateGaussian
 # from .models.local_level import LocalLevelModel
 # from .models.stoch_vol import StochVolModel
-# from .models import *
+from .models import *
 from .algos.sgvb import sgvb
 from .algos.map import map
 
