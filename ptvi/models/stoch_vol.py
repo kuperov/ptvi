@@ -1,6 +1,6 @@
 import torch
 from torch.distributions import *
-from ptvi import (Model, local_param, global_param)
+from ptvi import Model, local_param, global_param
 
 
 class StochVolModel(Model):
