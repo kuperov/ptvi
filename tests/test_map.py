@@ -28,3 +28,13 @@ class TestMap(unittest.TestCase):
         self.assertIsInstance(L, torch.Tensor)
         self.assertEqual(u.shape, (model.d,))
         self.assertEqual(L.shape, (model.d, model.d))
+
+    def test_alt_map(self):
+        torch.manual_seed(123)
+        model = LocalLevelModel(input_length=100)
+        γ0, η0, σ0, ρ0 = 0., 2., 1.5, 0.92
+        params = {'γ': γ0, 'η': η0, 'σ': σ0, 'ρ': ρ0}
+        y, z = model.simulate(**params)
+
+        from ptvi.algos.blocked_map import blocked_map
+        θ, z = blocked_map(model, y)

@@ -7,6 +7,7 @@ from ptvi import (Model, local_param, global_param)
 class LocalLevelModel(Model):
 
     name = 'Local level model'
+    dtype = torch.float64
     z = local_param()
     γ = global_param(prior=Normal(0, 1))
     η = global_param(prior=LogNormal(0, 3), transform='log', rename='ψ')
@@ -31,11 +32,11 @@ class LocalLevelModel(Model):
         return llikelihood + lprior
 
     def simulate(self, γ: float, η: float, σ: float, ρ: float):
-        z = torch.empty([self.input_length])
-        z[0] = Normal(0, 1/(1 - ρ**2)**0.5).sample()
+        z = torch.empty([self.input_length], dtype=self.dtype)
+        z[0] = Normal(0, 1/(1 - ρ**2)**0.5).sample().type(self.dtype)
         for i in range(1, self.input_length):
-            z[i] = ρ*z[i-1] + Normal(0, 1).sample()
-        y = Normal(γ + η*z, σ).sample()
+            z[i] = ρ*z[i-1] + Normal(0, 1).sample().type(self.dtype)
+        y = Normal(γ + η*z, σ).sample().type(self.dtype)
         return y, z
 
     def sample_observed(self, ζ, fc_steps=0):
