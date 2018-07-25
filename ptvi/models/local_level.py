@@ -1,16 +1,14 @@
 import torch
 from torch.distributions import *
 from ptvi.dist import InvGamma
-from ptvi import (VIModel, VITimeSeriesResult, local_param, global_param)
+from ptvi import (Model, local_param, global_param)
 
 
-class LocalLevelModel(VIModel):
-    # approximating density: q(u, LL')
+class LocalLevelModel(Model):
 
     name = 'Local level model'
-    result_class = VITimeSeriesResult
     z = local_param()
-    γ = global_param(prior=Normal(0, 3))
+    γ = global_param(prior=Normal(1, 3))
     η = global_param(prior=LogNormal(0, 3), transform='log', rename='ψ')
     σ = global_param(prior=InvGamma(1, 5), transform='log', rename='ς')
     ρ = global_param(prior=Beta(2, 2), transform='logit', rename='φ')

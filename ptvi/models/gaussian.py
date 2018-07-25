@@ -1,8 +1,8 @@
 from torch.distributions import Normal, LogNormal
-from ptvi import VIModel, global_param
+from ptvi import Model, global_param
 
 
-class UnivariateGaussian(VIModel):
+class UnivariateGaussian(Model):
     """Simple univariate Gaussian model.
 
     For the optimization, we transform σ -> ln(σ) = η to ensure σ > 0.
@@ -11,9 +11,9 @@ class UnivariateGaussian(VIModel):
     μ = global_param(prior=Normal(0., 10.))
     σ = global_param(prior=LogNormal(0., 10.), rename='η', transform='log')
 
-    def simulate(self, N: int, μ0: float, σ0: float):
-        assert N > 2 and σ0 > 0
-        return Normal(μ0, σ0).sample((N,))
+    def simulate(self, N: int, μ: float, σ: float):
+        assert N > 2 and σ > 0
+        return Normal(μ, σ).sample((N,))
 
     def ln_joint(self, y, ζ):
         μ, (σ, η) = self.unpack(ζ)

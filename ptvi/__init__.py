@@ -5,5 +5,7 @@ from .dist import InvGamma, InvWishart, Improper
 from .stopping import (ExponentialStoppingHeuristic, NullStoppingHeuristic,
                        NoImprovementStoppingHeuristic, StoppingHeuristic,
                        MedianGrowthStoppingHeuristic)
-from .model import (VIModel, VIResult, VITimeSeriesResult, local_param, global_param)
+from .model import Model
+from .params import local_param, global_param
 from ptvi.models import *
+from .algos import *

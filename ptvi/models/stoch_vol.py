@@ -1,10 +1,9 @@
 import torch
 from torch.distributions import *
-from ptvi import (VIModel, VITimeSeriesResult, local_param, global_param)
+from ptvi import (Model, local_param, global_param)
 
 
-class StochVolModel(VIModel):
-    result_class = VITimeSeriesResult
+class StochVolModel(Model):
     name = 'Stochastic volatility model'
     b = local_param()
     # λ = global_param(prior=Normal(0, 1e-4))
@@ -38,14 +37,6 @@ class StochVolModel(VIModel):
             b[t] = Normal(φ * b[t - 1], 1).sample()
         y = Normal(loc=0., scale=torch.exp(0.5 * (λ + σ * b))).sample()
         return y, b
-
-    def print_status(self, i, elbo_hat):
-        # b, λ, (σ, log_σ), (φ, logit_φ) = self.unpack(self.u)
-        b, (σ, log_σ), (φ, logit_φ) = self.unpack(self.u)
-        self.print(f'{i: 8d}. smoothed elbo_hat ={float(elbo_hat):12.2f}'
-                   f'  '  # λ={float(λ):.2f} '
-                   f'σ={float(σ):.2f} log(σ)={float(log_σ):.2f} '
-                   f'φ={float(φ):.2f} logit(φ)={float(logit_φ):.2f}')
 
     def sample_observed(self, ζ, fc_steps=0):
         b, (σ, α), (φ, ψ) = self.unpack(ζ)

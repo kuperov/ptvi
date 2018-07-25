@@ -1,6 +1,7 @@
 import torch
 from torch.distributions import Normal, LogNormal
-from ptvi import UnivariateGaussian, VIResult
+from ptvi import UnivariateGaussian, sgvb
+from ptvi.algos.sgvb import SGVBResult
 from tests.test_util import TorchTestCase
 from unittest.mock import patch
 
@@ -25,21 +26,21 @@ class TestGaussian(TorchTestCase):
         self.assertClose(
             η_prior.log_prob(ηs), σ_prior.log_prob(σs) + torch.log(σs))
 
-    def test_smoke_test_training_loop(self):
-        model = UnivariateGaussian(num_draws=1, stochastic_entropy=True,
-                                   quiet=True)
+    def test_smoke_test_sgvb(self):
+        model = UnivariateGaussian()
         torch.manual_seed(123)
         N, μ0, σ0 = 100, 5., 5.
-        y = model.simulate(N=N, μ0=μ0, σ0=σ0)
-        fit = model.training_loop(y, max_iters=2**4)
-        self.assertIsInstance(fit, VIResult)
+        y = model.simulate(N=N, μ=μ0, σ=σ0)
+        fit = sgvb(model, y, max_iters=2**4, num_draws=1,
+            sim_entropy=True, quiet=True)
+        self.assertIsInstance(fit, SGVBResult)
 
     def test_plots(self):
         torch.manual_seed(123)
-        m = UnivariateGaussian(quiet=True)
+        m = UnivariateGaussian()
         N, μ0, σ0 = 100, 5., 5.
-        y = m.simulate(N=N, μ0=μ0, σ0=σ0)
-        fit = m.training_loop(y, max_iters=100)
+        y = m.simulate(N=N, μ=μ0, σ=σ0)
+        fit = sgvb(m, y, max_iters=100, quiet=True)
 
         patch("ptvi.model.plt.show", fit.plot_marg_post('μ'))
         patch("ptvi.model.plt.show", fit.plot_data())

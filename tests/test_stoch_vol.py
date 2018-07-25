@@ -1,5 +1,6 @@
 import unittest
-from ptvi import StochVolModel, VITimeSeriesResult
+from ptvi import StochVolModel, sgvb
+from ptvi.algos.sgvb import SGVBResult
 
 
 class TestStochVolModel(unittest.TestCase):
@@ -11,7 +12,7 @@ class TestStochVolModel(unittest.TestCase):
         self.assertEqual(b.shape, (50,))
 
     def test_training_loop(self):
-        m = StochVolModel(input_length=50, quiet=True)
+        m = StochVolModel(input_length=50)
         y, b = m.simulate(λ=0.5, σ=0.5, φ=0.95)
-        fit = m.training_loop(y, max_iters=5)
-        self.assertIsInstance(fit, VITimeSeriesResult)
+        fit = sgvb(m, y, max_iters=5, quiet=True)
+        self.assertIsInstance(fit, SGVBResult)
