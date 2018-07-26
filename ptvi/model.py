@@ -1,10 +1,11 @@
-from time import time
 from typing import List
 
 import torch
-from torch.distributions import TransformedDistribution, MultivariateNormal
+from torch.distributions import TransformedDistribution
 
-from ptvi.params import TransformedModelParameter, ModelParameter, LocalParameter
+from ptvi.params import (
+    TransformedModelParameter, ModelParameter, LocalParameter)
+
 
 _DIVIDER = "―"*80
 
@@ -15,6 +16,7 @@ class Model(object):
     """
 
     name = 'VI Model'
+    has_observation_error = True  # true if outcome is imperfectly observed
 
     def __init__(self, input_length=None):
         self.input_length = input_length
@@ -79,10 +81,25 @@ class Model(object):
         given parameters ζ (in transformed space).
 
         Args:
+            ζ: parameter to condition on
             fc_steps: number of steps to project forward
 
         Returns:
             1-tensor of sample paths of length (input_length+fc_steps)
+        """
+        raise NotImplementedError
+
+    def forecast(self, ζ, y, fc_steps):
+        """Project a path from the model with fc_steps additional steps,
+        given parameters ζ (in transformed space).
+
+        Args:
+            ζ: parameter to condition on
+            y: observed data to extend
+            fc_steps: number of steps to project forward
+
+        Returns:
+            1-tensor of length fc_steps
         """
         raise NotImplementedError
 
