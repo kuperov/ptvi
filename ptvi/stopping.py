@@ -142,7 +142,7 @@ class SupGrowthStoppingHeuristic(StoppingHeuristic):
     skip*patience steps, early_stop() returns true.
     """
 
-    def __init__(self, patience:int=20, skip:int=10, min_steps:int=50,
+    def __init__(self, patience:int=20, skip:int=10, min_steps:int=100,
                  ε:float=1e-1, α:float=.1):
         assert min_steps > patience
         self.skip, self.patience, self.ε, self.α = skip, patience, ε, α
@@ -171,9 +171,10 @@ class SupGrowthStoppingHeuristic(StoppingHeuristic):
             self.no_improvement_count += 1
         self.best_circ_buf[buf_idx] = self.sup_elbo
         return (self.no_improvement_count >= self.patience
-                and self.i > self.min_steps)
+                and self.i > self.min_steps*self.skip)
 
     def __str__(self):
         return (
-            f'Minimum supremum growth heuristic (min_steps={self.min_steps},'
+            f'Minimum supremum growth heuristic ('
+            f'min_steps={self.min_steps*self.skip},'
             f' patience={self.patience}, skip={self.skip}, ε={self.ε})')
