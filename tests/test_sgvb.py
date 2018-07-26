@@ -1,6 +1,6 @@
 import unittest
 import torch
-from ptvi.algos.mf_sgvb import mf_sgvb
+from ptvi.algos import mf_sgvb
 from ptvi import LocalLevelModel, UnivariateGaussian
 from ptvi.stopping import SupGrowthStoppingHeuristic
 

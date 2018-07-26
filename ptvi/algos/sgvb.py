@@ -9,7 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ptvi import Model, StoppingHeuristic, NoImprovementStoppingHeuristic
+from ptvi import Model, StoppingHeuristic, SupGrowthStoppingHeuristic
 from ptvi.params import TransformedModelParameter, LocalParameter
 
 
@@ -42,7 +42,7 @@ def sgvb(model: Model,
     Returns:
         A SGVBResult object with the approximate posterior.
     """
-    stop_heur = stop_heur or NoImprovementStoppingHeuristic()
+    stop_heur = stop_heur or SupGrowthStoppingHeuristic()
 
     # dense approximation: q = N(u, LL')
     u0 = torch.tensor(u0) if u0 is not None else torch.zeros(model.d)
@@ -56,8 +56,8 @@ def sgvb(model: Model,
     def qprint(s):
         if not quiet: print(s)
 
-    qprint(header('Structured', optimizer, sim_entropy, stop_heur, model.name,
-                  num_draws, λ))
+    qprint(_header('Structured', optimizer, sim_entropy, stop_heur, model.name,
+                   num_draws, λ))
 
     def elbo_hat():
         trL = torch.tril(L)
@@ -142,8 +142,8 @@ def mf_sgvb(model: Model,
     def qprint(s):
         if not quiet: print(s)
 
-    qprint(header('Mean-field', optimizer, sim_entropy, stop_heur, model.name,
-                  num_draws, λ))
+    qprint(_header('Mean-field', optimizer, sim_entropy, stop_heur, model.name,
+                   num_draws, λ))
 
     def elbo_hat():
         E_ln_joint, H_q_hat = 0., 0.  # accumulators
@@ -185,12 +185,12 @@ def mf_sgvb(model: Model,
     return SGVBResult(model, elbo_hats, y, q)
 
 
-def header(inftype, optimizer, stochastic_entropy, stop_heur, model_name, num_draws, λ):
+def _header(inftype, optimizer, stochastic_entropy, stop_heur, model_name, num_draws, λ):
     if stochastic_entropy:
         title = f'{inftype} SGVB Inference'
     else:
         title = f'{inftype} ADVI'
-    lines = [_DIVIDER, f"{title}: {model_name}:"]
+    lines = [_DIVIDER, f"{title}: {model_name}"]
     lines += [f"  - Estimating elbo with M={num_draws};",
               f"  - {str(stop_heur)}",
               f'  - {type(optimizer).__name__} optimizer with param groups:']
@@ -249,7 +249,9 @@ class SGVBResult(object):
             else:
                 _τ = self.input_length
                 paths[i, :_τ] = self.y
-                paths[i, _τ:] = self.model.forecast(ζ, y, fc_steps=fc_steps)
+                if fc_steps > 0:
+                    paths[i, _τ:] = self.model.forecast(ζ, self.y,
+                                                        fc_steps=fc_steps)
         return paths
 
     def summary(self):
