@@ -1,5 +1,5 @@
 import torch
-from torch.distributions import *
+from torch.distributions import Normal, LogNormal, Beta
 from ptvi.dist import InvGamma
 from ptvi import (Model, local_param, global_param)
 
