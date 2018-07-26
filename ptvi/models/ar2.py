@@ -18,8 +18,8 @@ class AR2(Model):
         llhood = Normal(μ + y[1:-1] * ρ1 + y[:-2] * ρ2, σ).log_prob(y[2:]).sum()
         lprior = (
             self.μ_prior.log_prob(μ)
-            + self.ρ1_prior.log_prob(ρ1)
-            + self.ρ2_prior.log_prob(ρ2)
+            + self.φ1_prior.log_prob(φ1)
+            + self.φ2_prior.log_prob(φ2)
             + self.η_prior.log_prob(η)
         )
         return llhood + lprior
