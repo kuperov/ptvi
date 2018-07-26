@@ -14,6 +14,7 @@ from ptvi.params import TransformedModelParameter, LocalParameter
 
 
 _DIVIDER = "―"*80
+_default_heuristic_type = SupGrowthStoppingHeuristic
 
 
 def sgvb(model: Model,
@@ -42,7 +43,7 @@ def sgvb(model: Model,
     Returns:
         A SGVBResult object with the approximate posterior.
     """
-    stop_heur = stop_heur or SupGrowthStoppingHeuristic()
+    stop_heur = stop_heur or _default_heuristic_type()
 
     # dense approximation: q = N(u, LL')
     u0 = torch.tensor(u0) if u0 is not None else torch.zeros(model.d)
@@ -128,7 +129,7 @@ def mf_sgvb(model: Model,
     Returns:
         A SGVBResult object with the approximate posterior.
     """
-    stop_heur = stop_heur or NoImprovementStoppingHeuristic()
+    stop_heur = stop_heur or _default_heuristic_type()
 
     # dense approximation: q = N(u, LL')
     u0 = torch.tensor(u0) if u0 is not None else torch.zeros(model.d)
