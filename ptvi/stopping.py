@@ -133,3 +133,47 @@ class MedianGrowthStoppingHeuristic(StoppingHeuristic):
         return (
             f'Minimum median elbo improvement rate (min_steps={self.min_steps},'
             f' patience={self.patience}, skip={self.skip}, ε={self.ε})')
+
+
+class SupGrowthStoppingHeuristic(StoppingHeuristic):
+    """Impose a minimum rate of improvement in the elbo supremum.
+
+    If the best has not increased by a rate of at least ε in the last
+    skip*patience steps, early_stop() returns true.
+    """
+
+    def __init__(self, patience:int=20, skip:int=10, min_steps:int=50,
+                 ε:float=1e-1, α:float=.1):
+        assert min_steps > patience
+        self.skip, self.patience, self.ε, self.α = skip, patience, ε, α
+        self.min_steps = min_steps
+        self.i = -1
+        self.sup_elbo, self.curr_elbo = None, None
+        self.best_circ_buf: List[float] = [None] * patience
+        self.no_improvement_count = 0
+
+    def early_stop(self, noisy_elbo: float) -> bool:
+        self.i += 1
+        if self.i % self.skip:
+            return False  # only check every N iterations
+        if self.curr_elbo is None:
+            self.curr_elbo = float(noisy_elbo)
+        else:
+            self.curr_elbo = (
+                self.α * float(noisy_elbo) + (1 - self.α) * self.curr_elbo)
+        buf_idx: int = (self.i // self.skip) % self.patience
+        if self.sup_elbo is None or self.curr_elbo > self.sup_elbo:
+            self.sup_elbo = self.curr_elbo
+        if (self.i > self.patience*self.skip and
+            self.sup_elbo - self.best_circ_buf[buf_idx] > self.ε):
+            self.no_improvement_count = 0
+        elif self.i > self.patience*self.skip:
+            self.no_improvement_count += 1
+        self.best_circ_buf[buf_idx] = self.sup_elbo
+        return (self.no_improvement_count >= self.patience
+                and self.i > self.min_steps)
+
+    def __str__(self):
+        return (
+            f'Minimum supremum growth heuristic (min_steps={self.min_steps},'
+            f' patience={self.patience}, skip={self.skip}, ε={self.ε})')
