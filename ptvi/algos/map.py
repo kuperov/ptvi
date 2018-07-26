@@ -1,7 +1,9 @@
 import torch
+from torch.distributions import MultivariateNormal
 from time import time
 
 from ptvi import Model
+from ptvi.algos.sgvb import SGVBResult
 
 
 _DIVIDER = "―"*80
@@ -23,7 +25,7 @@ def map(model: Model, y: torch.Tensor, ζ0=None, max_iters=20, ε=1e-4,
     else:
         ζ = torch.zeros(model.d, requires_grad=True)
     optimizer = torch.optim.LBFGS([ζ], **kwargs)
-    last_loss, t = None, -time()
+    last_loss, t, losses = None, -time(), []
     for i in range(max_iters):
         def closure():
             optimizer.zero_grad()
@@ -38,6 +40,7 @@ def map(model: Model, y: torch.Tensor, ζ0=None, max_iters=20, ε=1e-4,
         elif last_loss and last_loss < loss + ε:
             qprint('Convergence criterion met.')
             break
+        losses.append(loss)
         last_loss = loss
     else:
         qprint('WARNING: maximum iterations reached.')
@@ -45,13 +48,16 @@ def map(model: Model, y: torch.Tensor, ζ0=None, max_iters=20, ε=1e-4,
     t += time()
     qprint(f'Completed {i+1:d} iterations in {t:.2f}s @ {(i+1)/t:.2f} i/s.')
     qprint(_DIVIDER)
-    return MAPResult(model=model, y=y, ζ=ζ.detach())
+    return MAPResult(model=model, y=y, ζ=ζ.detach(), losses=losses)
 
 
-class MAPResult(object):
+class MAPResult(SGVBResult):
 
-    def __init__(self, model, y, ζ):
+    def __init__(self, model, y, ζ, losses):
         self.model, self.y, self.ζ = model, y, ζ
+        u, L = self.initial_conditions()
+        q = MultivariateNormal(u, scale_tril=L)
+        super().__init__(model, losses, y, q)
 
     # https://discuss.pytorch.org/t/compute-the-hessian-matrix-of-a-network/15270#post_3
     def ln_joint_grad_hessian(self):
