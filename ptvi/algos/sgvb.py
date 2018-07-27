@@ -65,7 +65,7 @@ def sgvb(model: Model,
         E_ln_joint, H_q_hat = 0., 0.  # accumulators
         q = MultivariateNormal(loc=u, scale_tril=trL)
         if not sim_entropy:
-            H_q_hat = q.entropy()
+            H_q_hat = -q.entropy()
         for _ in range(num_draws):
             ζ = u + trL @ torch.randn((model.d,))  # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
@@ -150,7 +150,7 @@ def mf_sgvb(model: Model,
         E_ln_joint, H_q_hat = 0., 0.  # accumulators
         q = Normal(loc=u, scale=torch.exp(omega/2))
         if not sim_entropy:
-            H_q_hat = q.entropy().sum()
+            H_q_hat = -q.entropy().sum()
         for _ in range(num_draws):
             ζ = u + torch.exp(omega/2) * torch.randn((model.d,)) # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
