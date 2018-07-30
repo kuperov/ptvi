@@ -97,7 +97,7 @@ def sgvb(model: Model,
         qprint('WARNING: maximum iterations reached.')
     t += time()
     qprint(
-        f'{i: 8d}. smoothed elbo ={float(-smoothed_objective):12.2f}\n'
+        f'{i: 8d}. smoothed elbo ={float(-smoothed_objective):8.2f}\n'
         f'Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n'
         f'{_DIVIDER}')
     u: torch.Tensor = u.detach()
@@ -185,7 +185,7 @@ def mf_sgvb(model: Model,
         qprint('WARNING: maximum iterations reached.')
     t += time()
     qprint(
-        f'{i: 8d}. smoothed elbo ={float(-smoothed_objective):12.2f}\n'
+        f'{i: 8d}. smoothed elbo ={float(-smoothed_objective):8.2f}\n'
         f'Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n'
         f'{_DIVIDER}')
     q = Normal(u.detach(), torch.exp(omega.detach()/2))
