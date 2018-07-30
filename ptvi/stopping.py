@@ -142,7 +142,7 @@ class SupGrowthStoppingHeuristic(StoppingHeuristic):
     skip*patience steps, early_stop() returns true.
     """
 
-    def __init__(self, patience:int=20, skip:int=10, min_steps:int=100,
+    def __init__(self, patience:int=20, skip:int=10, min_steps:int=50,
                  ε:float=1e-1, α:float=.1):
         assert min_steps > patience
         self.skip, self.patience, self.ε, self.α = skip, patience, ε, α
@@ -154,6 +154,10 @@ class SupGrowthStoppingHeuristic(StoppingHeuristic):
 
     def early_stop(self, noisy_elbo: float) -> bool:
         self.i += 1
+        if self.i == self.min_steps*self.skip:
+            self.sup_elbo = self.curr_elbo  # in case we started in ok position
+            self.no_improvement_count = 0
+            self.best_circ_buf = [self.curr_elbo] * self.patience
         if self.i % self.skip:
             return False  # only check every N iterations
         if self.curr_elbo is None:
