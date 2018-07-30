@@ -63,9 +63,12 @@ def sgvb(model: Model,
     def elbo_hat():
         trL = torch.tril(L)
         E_ln_joint, H_q_hat = 0., 0.  # accumulators
-        q = MultivariateNormal(loc=u, scale_tril=trL)
         if not sim_entropy:
+            q = MultivariateNormal(loc=u, scale_tril=trL)
             H_q_hat = q.entropy()
+        else:
+            # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
+            q = MultivariateNormal(loc=u.data, scale_tril=trL.data)
         for _ in range(num_draws):
             ζ = u + trL @ torch.randn((model.d,))  # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
@@ -148,9 +151,12 @@ def mf_sgvb(model: Model,
 
     def elbo_hat():
         E_ln_joint, H_q_hat = 0., 0.  # accumulators
-        q = Normal(loc=u, scale=torch.exp(omega/2))
         if not sim_entropy:
+            q = Normal(loc=u, scale=torch.exp(omega / 2))
             H_q_hat = q.entropy().sum()
+        else:
+            # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
+            q = Normal(loc=u.data, scale=torch.exp(omega.data / 2))
         for _ in range(num_draws):
             ζ = u + torch.exp(omega/2) * torch.randn((model.d,)) # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
