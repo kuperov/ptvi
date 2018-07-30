@@ -68,7 +68,7 @@ def sgvb(model: Model,
             H_q_hat = -q.entropy()
         else:
             # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
-            q = MultivariateNormal(loc=u.data, scale_tril=trL.data)
+            q = MultivariateNormal(loc=u.detach(), scale_tril=trL.detach())
         for _ in range(num_draws):
             ζ = u + trL @ torch.randn((model.d,))  # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
@@ -156,7 +156,7 @@ def mf_sgvb(model: Model,
             H_q_hat = -q.entropy().sum()
         else:
             # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
-            q = Normal(loc=u.data, scale=torch.exp(omega.data / 2))
+            q = Normal(loc=u.detach(), scale=torch.exp(omega.detach() / 2))
         for _ in range(num_draws):
             ζ = u + torch.exp(omega/2) * torch.randn((model.d,)) # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
