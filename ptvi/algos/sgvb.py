@@ -65,7 +65,7 @@ def sgvb(model: Model,
         E_ln_joint, H_q_hat = 0., 0.  # accumulators
         if not sim_entropy:
             q = MultivariateNormal(loc=u, scale_tril=trL)
-            H_q_hat = q.entropy()
+            H_q_hat = -q.entropy()
         else:
             # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
             q = MultivariateNormal(loc=u.data, scale_tril=trL.data)
@@ -153,7 +153,7 @@ def mf_sgvb(model: Model,
         E_ln_joint, H_q_hat = 0., 0.  # accumulators
         if not sim_entropy:
             q = Normal(loc=u, scale=torch.exp(omega / 2))
-            H_q_hat = q.entropy().sum()
+            H_q_hat = -q.entropy().sum()
         else:
             # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
             q = Normal(loc=u.data, scale=torch.exp(omega.data / 2))

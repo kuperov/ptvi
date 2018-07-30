@@ -1,6 +1,8 @@
 from typing import Union
 import torch
-from torch.distributions import Distribution, Transform
+from torch.distributions import (
+    Distribution, Transform, ComposeTransform, SigmoidTransform, ExpTransform,
+    AffineTransform)
 from ptvi.dist import Improper
 
 
@@ -125,6 +127,13 @@ def global_param(prior: Distribution=None, name: str=None,
             transform = torch.distributions.SigmoidTransform().inv
             if rename is None and name is not None:
                 rename = f'logit{name}'
+        elif transform == 'slogit':
+            # nasty and hacky attempt to avoid saturating the logistic transform
+            inv_transform = ComposeTransform([
+                AffineTransform(loc=0, scale=1e-4), SigmoidTransform()])
+            transform = inv_transform.inv
+            if rename is None and name is not None:
+                rename = f'slogit{name}'
         elif transform == 'sigmoid':
             raise Exception("Use 'logit' to constrain parameters to (0, 1)")
         else:
