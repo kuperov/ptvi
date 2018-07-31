@@ -103,6 +103,23 @@ class TestLocalLevel(TorchTestCase):
                                                      include_data=True))
 
 
+class TestFilteredLocalLevelModel(TorchTestCase):
+
+    def test_training(self):
+        fll = FilteredLocalLevelModel(input_length=50)
+        true_params = dict(γ=0., η=2., ρ=0.95, σ=1.5)
+        algo_seed, data_seed = 123, 123
+        torch.manual_seed(data_seed)
+        y, z = fll.simulate(**true_params)
+        self.assertIsInstance(y, torch.Tensor)
+        self.assertEqual(y.shape, (50,))
+        self.assertIsInstance(z, torch.Tensor)
+        self.assertEqual(z.shape, (50,))
+        torch.manual_seed(algo_seed)
+        fit = sgvb(fll, y, max_iters=8, quiet=True)
+        self.assertIsInstance(fit, SGVBResult)
+
+
 class TestAR2(TorchTestCase):
 
     def setUp(self):
