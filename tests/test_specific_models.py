@@ -1,5 +1,5 @@
 import torch
-from torch.distributions import LogNormal, Normal
+from torch.distributions import LogNormal, Normal, StudentT
 from unittest.mock import patch
 
 from ptvi import map, sgvb
@@ -101,6 +101,39 @@ class TestLocalLevel(TorchTestCase):
         patch("ptvi.model.plt.show", fit.plot_elbos())
         patch("ptvi.model.plt.show", fit.plot_latent(true_z=z,
                                                      include_data=True))
+
+
+class TestFilteredLocalLevelModel(TorchTestCase):
+
+    def test_training(self):
+        fll = FilteredLocalLevelModel(input_length=50)
+        true_params = dict(γ=0., η=2., ρ=0.95, σ=1.5)
+        algo_seed, data_seed = 123, 123
+        torch.manual_seed(data_seed)
+        y, z = fll.simulate(**true_params)
+        self.assertIsInstance(y, torch.Tensor)
+        self.assertEqual(y.shape, (50,))
+        self.assertIsInstance(z, torch.Tensor)
+        self.assertEqual(z.shape, (50,))
+        torch.manual_seed(algo_seed)
+        fit = sgvb(fll, y, max_iters=8, quiet=True)
+        self.assertIsInstance(fit, SGVBResult)
+
+    def test_smoothing(self):
+        # we should be able to run the kalman smoother over pretty much any
+        # parameters without it blowing up
+        fll = FilteredLocalLevelModel(input_length=50)
+        true_params = dict(γ=0., η=2., ρ=0.95, σ=1.5)
+        algo_seed, data_seed = 123, 123
+        torch.manual_seed(data_seed)
+        y, z = fll.simulate(**true_params)
+        for i in range(10):
+            ζ = StudentT(df=4, loc=0, scale=10).sample((fll.d,))
+            sm = fll.kalman_smoother(y, ζ)
+            for k in ['z_upd', 'Σz_upd', 'z_smooth', 'Σz_smooth', 'y_pred',
+                      'Σy_pred']:
+                self.assertIsInstance(sm[k], torch.Tensor)
+                self.assertFalse(any(torch.isnan(sm[k])))
 
 
 class TestAR2(TorchTestCase):
