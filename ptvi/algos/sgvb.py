@@ -63,9 +63,12 @@ def sgvb(model: Model,
     def elbo_hat():
         trL = torch.tril(L)
         E_ln_joint, H_q_hat = 0., 0.  # accumulators
-        q = MultivariateNormal(loc=u, scale_tril=trL)
         if not sim_entropy:
+            q = MultivariateNormal(loc=u, scale_tril=trL)
             H_q_hat = -q.entropy()
+        else:
+            # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
+            q = MultivariateNormal(loc=u.detach(), scale_tril=trL.detach())
         for _ in range(num_draws):
             ζ = u + trL @ torch.randn((model.d,))  # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
@@ -94,7 +97,7 @@ def sgvb(model: Model,
         qprint('WARNING: maximum iterations reached.')
     t += time()
     qprint(
-        f'{i: 8d}. smoothed elbo ={float(-smoothed_objective):12.2f}\n'
+        f'{i: 8d}. smoothed elbo ={float(-smoothed_objective):8.2f}\n'
         f'Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n'
         f'{_DIVIDER}')
     u: torch.Tensor = u.detach()
@@ -148,9 +151,12 @@ def mf_sgvb(model: Model,
 
     def elbo_hat():
         E_ln_joint, H_q_hat = 0., 0.  # accumulators
-        q = Normal(loc=u, scale=torch.exp(omega/2))
         if not sim_entropy:
+            q = Normal(loc=u, scale=torch.exp(omega / 2))
             H_q_hat = -q.entropy().sum()
+        else:
+            # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
+            q = Normal(loc=u.detach(), scale=torch.exp(omega.detach() / 2))
         for _ in range(num_draws):
             ζ = u + torch.exp(omega/2) * torch.randn((model.d,)) # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
@@ -179,7 +185,7 @@ def mf_sgvb(model: Model,
         qprint('WARNING: maximum iterations reached.')
     t += time()
     qprint(
-        f'{i: 8d}. smoothed elbo ={float(-smoothed_objective):12.2f}\n'
+        f'{i: 8d}. smoothed elbo ={float(-smoothed_objective):8.2f}\n'
         f'Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n'
         f'{_DIVIDER}')
     q = Normal(u.detach(), torch.exp(omega.detach()/2))
