@@ -120,37 +120,37 @@ class FilteredLocalLevelModel(Model):
             'Σz_smooth': Σz_smooth, 'y_pred': y_pred, 'Σy_pred': Σy_pred
         }
 
-    def sample_unobserved(self, ζ, y, fc_steps=0):
-        z0, (σz0, ςz0), γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)
-
-        # prediction step
-        z_pred = ρ * z0
-        Σz_pred = ρ**2 * σz0**2 + 1
-        y_pred = η * z_pred
-        Σy_pred = η**2 * Σz_pred + σ**2
-
-        # correction step
-        gain = Σz_pred * η / Σy_pred
-        z_upd = z_pred + gain * (y[0] - y_pred)
-        Σz_upd = Σz_pred - gain**2 * Σy_pred
-
-        llik = Normal(y_pred, torch.sqrt(Σy_pred)).log_prob(y[0])
-
-        for t in range(2, y.shape[0] + 1):
-            i = t - 1
-            # prediction step
-            z_pred = ρ * z_upd
-            Σz_pred = ρ**2 * Σz_upd + 1
-            y_pred = η * z_pred
-            Σy_pred = η**2 * Σz_pred + σ**2
-            # correction step
-            gain = Σz_pred * η / Σy_pred
-            z_upd = z_pred + gain * (y[i] - y_pred)
-            Σz_upd = Σz_pred - gain**2 * Σy_pred
-
-            llik += Normal(y_pred, torch.sqrt(Σy_pred)).log_prob(y[i])
-
-        return y
+    # def sample_unobserved(self, ζ, y, fc_steps=0):
+    #     z0, (σz0, ςz0), γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)
+    #
+    #     # prediction step
+    #     z_pred = ρ * z0
+    #     Σz_pred = ρ**2 * σz0**2 + 1
+    #     y_pred = η * z_pred
+    #     Σy_pred = η**2 * Σz_pred + σ**2
+    #
+    #     # correction step
+    #     gain = Σz_pred * η / Σy_pred
+    #     z_upd = z_pred + gain * (y[0] - y_pred)
+    #     Σz_upd = Σz_pred - gain**2 * Σy_pred
+    #
+    #     llik = Normal(y_pred, torch.sqrt(Σy_pred)).log_prob(y[0])
+    #
+    #     for t in range(2, y.shape[0] + 1):
+    #         i = t - 1
+    #         # prediction step
+    #         z_pred = ρ * z_upd
+    #         Σz_pred = ρ**2 * Σz_upd + 1
+    #         y_pred = η * z_pred
+    #         Σy_pred = η**2 * Σz_pred + σ**2
+    #         # correction step
+    #         gain = Σz_pred * η / Σy_pred
+    #         z_upd = z_pred + gain * (y[i] - y_pred)
+    #         Σz_upd = Σz_pred - gain**2 * Σy_pred
+    #
+    #         llik += Normal(y_pred, torch.sqrt(Σy_pred)).log_prob(y[i])
+    #
+    #     return y
 
     # def sample_observed(self, ζ, fc_steps=0):
     #     z0, (σz0, _), γ, (η, _), (σ, _), (ρ, _) = self.unpack(ζ)
