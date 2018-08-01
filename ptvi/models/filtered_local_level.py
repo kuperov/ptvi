@@ -72,14 +72,14 @@ class FilteredLocalLevelModel(Model):
     def kalman_smoother(self, y, ζ):
         z0, (σz0, ςz0), γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)
 
-        z_pred = torch.zeros((self.input_length,))  # z_{t|t-1}
-        z_upd = torch.zeros((self.input_length,))  # z_{t|t}
-        Σz_pred = torch.zeros((self.input_length,))  # Sigma_{z_{t|t-1}}
-        Σz_upd = torch.zeros((self.input_length,))  # Sigma_{z_{t|t}}
-        y_pred = torch.zeros((self.input_length,))  # y_{t|t-1}
-        Σy_pred = torch.zeros((self.input_length,))  # Sigma_{y_{t|t-1}}
-        z_smooth = torch.zeros((self.input_length,))  # z_{t|T}
-        Σz_smooth = torch.zeros((self.input_length,))  # Sigma_{z_{t|T}}
+        z_pred = torch.zeros((self.input_length,))     # z_{t|t-1}
+        z_upd = torch.zeros((self.input_length,))      # z_{t|t}
+        Σz_pred = torch.zeros((self.input_length,))    # Σ_{z_{t|t-1}}
+        Σz_upd = torch.zeros((self.input_length,))     # Σ_{z_{t|t}}
+        y_pred = torch.zeros((self.input_length,))     # y_{t|t-1}
+        Σy_pred = torch.zeros((self.input_length,))    # Σ_{y_{t|t-1}}
+        z_smooth = torch.zeros((self.input_length,))   # z_{t|T}
+        Σz_smooth = torch.zeros((self.input_length,))  # Σ_{z_{t|T}}
 
         # prediction step
         z_pred[0] = ρ * z0
@@ -119,44 +119,3 @@ class FilteredLocalLevelModel(Model):
             'z_upd': z_upd, 'Σz_upd': Σz_upd, 'z_smooth': z_smooth,
             'Σz_smooth': Σz_smooth, 'y_pred': y_pred, 'Σy_pred': Σy_pred
         }
-
-    # def sample_unobserved(self, ζ, y, fc_steps=0):
-    #     z0, (σz0, ςz0), γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)
-    #
-    #     # prediction step
-    #     z_pred = ρ * z0
-    #     Σz_pred = ρ**2 * σz0**2 + 1
-    #     y_pred = η * z_pred
-    #     Σy_pred = η**2 * Σz_pred + σ**2
-    #
-    #     # correction step
-    #     gain = Σz_pred * η / Σy_pred
-    #     z_upd = z_pred + gain * (y[0] - y_pred)
-    #     Σz_upd = Σz_pred - gain**2 * Σy_pred
-    #
-    #     llik = Normal(y_pred, torch.sqrt(Σy_pred)).log_prob(y[0])
-    #
-    #     for t in range(2, y.shape[0] + 1):
-    #         i = t - 1
-    #         # prediction step
-    #         z_pred = ρ * z_upd
-    #         Σz_pred = ρ**2 * Σz_upd + 1
-    #         y_pred = η * z_pred
-    #         Σy_pred = η**2 * Σz_pred + σ**2
-    #         # correction step
-    #         gain = Σz_pred * η / Σy_pred
-    #         z_upd = z_pred + gain * (y[i] - y_pred)
-    #         Σz_upd = Σz_pred - gain**2 * Σy_pred
-    #
-    #         llik += Normal(y_pred, torch.sqrt(Σy_pred)).log_prob(y[i])
-    #
-    #     return y
-
-    # def sample_observed(self, ζ, fc_steps=0):
-    #     z0, (σz0, _), γ, (η, _), (σ, _), (ρ, _) = self.unpack(ζ)
-    #     if fc_steps > 0:
-    #         z = torch.cat([z, torch.zeros(fc_steps)])
-    #     # iteratively project states forward
-    #     for t in range(self.input_length, self.input_length + fc_steps):
-    #         z[t] = z[t - 1] * ρ + Normal(0, 1).sample()
-    #     return Normal(γ + η * z, σ).sample()
