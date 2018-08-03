@@ -369,6 +369,8 @@ class SGVBResult(object):
         rows = round(math.ceil(len(params) / cols))
         for r in range(rows):
             for c in range(cols):
+                if r * cols + c >= len(params):
+                    break
                 plt.subplot(rows, cols, r * cols + c + 1)
                 p = params[r * cols + c]
                 self.plot_marg_post(p.name, true_val=true_vals.get(p.name, None))
