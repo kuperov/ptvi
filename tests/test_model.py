@@ -2,16 +2,13 @@ import math
 import tests.test_util
 import pandas as pd
 from ptvi import *
-from ptvi.model import (
-    LocalParameter, ModelParameter, TransformedModelParameter)
+from ptvi.model import LocalParameter, ModelParameter, TransformedModelParameter
 from ptvi.algos.sgvb import SGVBResult
-from torch.distributions import (
-    Normal, LogNormal, TransformedDistribution, Transform)
+from torch.distributions import Normal, LogNormal, TransformedDistribution, Transform
 import torch
 
 
 class TestGaussianModel(tests.test_util.TorchTestCase):
-
     def test_model_attrs(self):
         m = UnivariateGaussian()
         self.assertIsInstance(m.μ_prior, Normal)
@@ -32,22 +29,21 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
         self.assertClose(2.5, η)
 
     def test_param_attrs(self):
-
         class TestModel(Model):
             z = local_param()
             a = global_param(prior=Normal(0, 1))
-            b = global_param(prior=InvGamma(2, 2), transform='log')
+            b = global_param(prior=InvGamma(2, 2), transform="log")
 
         m = TestModel(input_length=10)
         self.assertIsInstance(m.z, LocalParameter)
-        self.assertEqual(m.z.name, 'z')
+        self.assertEqual(m.z.name, "z")
         self.assertIsInstance(m.z.prior, Improper)
         self.assertIsInstance(m.a, ModelParameter)
 
         self.assertIsInstance(m.b, TransformedModelParameter)
-        self.assertEqual(m.b.name, 'b')
-        self.assertEqual(m.b.transform_desc, 'log')
-        self.assertEqual(m.b.transformed_name, 'log_b')
+        self.assertEqual(m.b.name, "b")
+        self.assertEqual(m.b.transform_desc, "log")
+        self.assertEqual(m.b.transformed_name, "log_b")
 
         self.assertEqual(m.params, [m.z, m.a, m.b])
 

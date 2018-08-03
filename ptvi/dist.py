@@ -8,16 +8,17 @@ from torch.distributions.utils import lazy_property
 
 class ReciprocalTransform(Transform):
     """Reciprocal transform y = 1/x."""
+
     sign = 1
 
     def _call(self, x):
-        return 1/x  # P(x=0) = 0 for diffuse distributions
+        return 1 / x  # P(x=0) = 0 for diffuse distributions
 
     def _inverse(self, y):
-        return 1./y  # P(y=0) = 0 for diffuse distributions
+        return 1. / y  # P(y=0) = 0 for diffuse distributions
 
     def log_abs_det_jacobian(self, x, y):
-        return 2*torch.log(y)
+        return 2 * torch.log(y)
 
 
 def InvGamma(a, b):
@@ -28,7 +29,8 @@ def InvGamma(a, b):
         b: scale (inverse of rate) parameter
     """
     return torch.distributions.TransformedDistribution(
-        torch.distributions.Gamma(concentration=a, rate=b), ReciprocalTransform())
+        torch.distributions.Gamma(concentration=a, rate=b), ReciprocalTransform()
+    )
 
 
 def _batch_mv(bmat, bvec):
@@ -58,7 +60,11 @@ def _get_batch_shape(bmat, bvec):
     try:
         vec_shape = torch._C._infer_size(bvec.shape, bmat.shape[:-1])
     except RuntimeError:
-        raise ValueError("Incompatible batch shapes: vector {}, matrix {}".format(bvec.shape, bmat.shape))
+        raise ValueError(
+            "Incompatible batch shapes: vector {}, matrix {}".format(
+                bvec.shape, bmat.shape
+            )
+        )
     return torch.Size(vec_shape[:-1])
 
 
@@ -80,8 +86,9 @@ class MVNPrecisionTril(torch.distributions.Distribution):
 
     For simplicity does not support batches for now.
     """
+
     support = constraints.real
-    arg_constraints = {'precision_tril': constraints.lower_cholesky}
+    arg_constraints = {"precision_tril": constraints.lower_cholesky}
     has_rsample = False
 
     def __init__(self, loc, precision_tril, validate_args=None):
@@ -90,7 +97,8 @@ class MVNPrecisionTril(torch.distributions.Distribution):
         if precision_tril.dim() < 2:
             raise ValueError(
                 "precision_tril matrix must be at least two-dimensional, "
-                "with optional leading batch dimensions")
+                "with optional leading batch dimensions"
+            )
         vec_shape = torch._C._infer_size(loc.shape, precision_tril.shape[:-1])
         batch_shape = torch.Size(vec_shape[:-1])
         super().__init__(batch_shape, event_shape, validate_args=validate_args)
@@ -153,8 +161,10 @@ class InvWishart(torch.distributions.Distribution):
 
     """
 
-    arg_constraints = {'df': constraints.positive,
-                       'scale': constraints.positive_definite}
+    arg_constraints = {
+        "df": constraints.positive,
+        "scale": constraints.positive_definite,
+    }
     support = constraints.real
     has_rsample = False
 
@@ -169,7 +179,7 @@ class InvWishart(torch.distributions.Distribution):
 
     @property
     def mean(self):
-        return self.scale/(self.df - self.p - 1)
+        return self.scale / (self.df - self.p - 1)
 
     # @property
     # def variance(self):
@@ -178,16 +188,17 @@ class InvWishart(torch.distributions.Distribution):
 
     def log_prob(self, value):
         _p = self.p
-        assert value.shape == (_p, _p), f'value should be {_p}x{_p} psd'
+        assert value.shape == (_p, _p), f"value should be {_p}x{_p} psd"
         X_inv = value.inverse()
         _df = self.df
         return (
-            + 0.5 * _df * torch.slogdet(self.scale)[1]
+            +0.5 * _df * torch.slogdet(self.scale)[1]
             - 0.5 * _df * _p * math.log(2)
             - special.multigammaln(0.5 * _df, _p)
             - 0.5 * (_df + _p + 1) * torch.slogdet(value)[1]  # |X|^{-(nu+p+1)/2}
             - 0.5 * torch.trace(self.scale @ X_inv)
         )
+
 
 # def logpdf_cholesky(L, df, Psi):
 #     """Inverse-wishart log density with Cholesky parameterization.

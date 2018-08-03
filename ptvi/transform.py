@@ -10,7 +10,7 @@ import numpy as np
 
 
 def vec_to_tril(l):
-    assert l.ndimension() == 1, 'l should have dim=1'
+    assert l.ndimension() == 1, "l should have dim=1"
     # lower triangle has k(k+1)//2 entries
     k = round(-1 + math.sqrt(1 + 8 * len(l))) // 2
     L = torch.zeros((k, k))
@@ -20,7 +20,7 @@ def vec_to_tril(l):
 
 def tril_to_vec(L):
     """Convert a lower-triangular matrix L to a vector l."""
-    assert L.ndimension() == 2, 'L should have dimension 2'
+    assert L.ndimension() == 2, "L should have dimension 2"
     return L[np.tril_indices(L.shape[0])]
 
 
@@ -28,7 +28,7 @@ def tril_to_vec(L):
 def vec_to_trilpd(l):
     """Convert a vector ls to a lower-triangular matrix L and exponentiate the
     diagonal entries."""
-    assert l.ndimension() == 1, 'l should have dimension 1'
+    assert l.ndimension() == 1, "l should have dimension 1"
     # lower triangle has k(k+1)//2 entries
     k = round(-1 + math.sqrt(1 + 8 * len(l))) // 2
     L = torch.zeros((k, k))
@@ -61,4 +61,3 @@ def vec_to_pd(l):
     """
     L = vec_to_trilpd(l)
     return torch.matmul(L, L.t())
-

@@ -23,14 +23,12 @@ def sparse_prec_chol(dim: int, diags: int, globals: int, requires_grad=True):
         cols += list(range(dim - d))
         values += [1. if d == 0 else 0] * (dim - d)
     # second: bottom rows are for the globals
-    for r in range(dim-globals, dim):
+    for r in range(dim - globals, dim):
         rowlen = r + 1 - diags  # exclude the diagonals
         rows += [r] * rowlen
         cols += list(range(rowlen))
         values += [0.] * rowlen
     idx_tens = torch.LongTensor([rows, cols])
     val_tens = torch.FloatTensor(values)
-    st = torch.sparse.FloatTensor(
-        idx_tens, val_tens, torch.Size([dim, dim]))
+    st = torch.sparse.FloatTensor(idx_tens, val_tens, torch.Size([dim, dim]))
     return st.requires_grad_(requires_grad)
-

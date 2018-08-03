@@ -7,9 +7,10 @@ class UnivariateGaussian(Model):
 
     For the optimization, we transform σ -> ln(σ) = η to ensure σ > 0.
     """
-    name = 'Univariate Gaussian model'
+
+    name = "Univariate Gaussian model"
     μ = global_param(prior=Normal(0., 10.))
-    σ = global_param(prior=LogNormal(0., 10.), rename='η', transform='log')
+    σ = global_param(prior=LogNormal(0., 10.), rename="η", transform="log")
 
     def simulate(self, N: int, μ: float, σ: float):
         assert N > 2 and σ > 0

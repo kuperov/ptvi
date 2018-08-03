@@ -11,7 +11,6 @@ from tests.test_util import TorchTestCase
 
 
 class TestGaussian(TorchTestCase):
-
     def test_lnσ_transformation(self):
         model = UnivariateGaussian()
         two = torch.tensor(2.)
@@ -27,16 +26,16 @@ class TestGaussian(TorchTestCase):
         # Transformed log density should include the log abs determinant of the
         # inverse transform σ = log(η), which is log(η)
         σs = model.σ_to_η.inv(ηs)
-        self.assertClose(
-            η_prior.log_prob(ηs), σ_prior.log_prob(σs) + torch.log(σs))
+        self.assertClose(η_prior.log_prob(ηs), σ_prior.log_prob(σs) + torch.log(σs))
 
     def test_smoke_test_sgvb(self):
         model = UnivariateGaussian()
         torch.manual_seed(123)
         N, μ0, σ0 = 100, 5., 5.
         y = model.simulate(N=N, μ=μ0, σ=σ0)
-        fit = sgvb(model, y, max_iters=2**4, num_draws=1,
-            sim_entropy=True, quiet=True)
+        fit = sgvb(
+            model, y, max_iters=2 ** 4, num_draws=1, sim_entropy=True, quiet=True
+        )
         self.assertIsInstance(fit, SGVBResult)
 
     def test_plots(self):
@@ -46,13 +45,12 @@ class TestGaussian(TorchTestCase):
         y = m.simulate(N=N, μ=μ0, σ=σ0)
         fit = sgvb(m, y, max_iters=100, quiet=True)
 
-        patch("ptvi.model.plt.show", fit.plot_marg_post('μ'))
+        patch("ptvi.model.plt.show", fit.plot_marg_post("μ"))
         patch("ptvi.model.plt.show", fit.plot_data())
         patch("ptvi.model.plt.show", fit.plot_elbos())
 
 
 class TestLocalLevel(TorchTestCase):
-
     def test_training_loop(self):
         torch.manual_seed(123)
         m = LocalLevelModel(input_length=20)
@@ -83,10 +81,10 @@ class TestLocalLevel(TorchTestCase):
         self.assertEqual(ss.shape, (10, 20))
         self.assertEqual(0, torch.sum(torch.isnan(ss)))
         ss = fit.sample_paths(N=10, fc_steps=10)
-        self.assertEqual(ss.shape, (10, 20+10))
+        self.assertEqual(ss.shape, (10, 20 + 10))
         self.assertEqual(0, torch.sum(torch.isnan(ss)))
         summ = fit.summary()
-        self.assertTrue(all(summ.index == ['γ', 'η', 'σ', 'ρ']))
+        self.assertTrue(all(summ.index == ["γ", "η", "σ", "ρ"]))
 
     def test_plots(self):
         torch.manual_seed(123)
@@ -96,15 +94,13 @@ class TestLocalLevel(TorchTestCase):
 
         patch("ptvi.model.plt.show", fit.plot_sample_paths())
         patch("ptvi.model.plt.show", fit.plot_pred_ci(fc_steps=2, true_y=y))
-        patch("ptvi.model.plt.show", fit.plot_marg_post('η'))
+        patch("ptvi.model.plt.show", fit.plot_marg_post("η"))
         patch("ptvi.model.plt.show", fit.plot_data())
         patch("ptvi.model.plt.show", fit.plot_elbos())
-        patch("ptvi.model.plt.show", fit.plot_latent(true_z=z,
-                                                     include_data=True))
+        patch("ptvi.model.plt.show", fit.plot_latent(true_z=z, include_data=True))
 
 
 class TestFilteredLocalLevelModel(TorchTestCase):
-
     def test_training(self):
         fll = FilteredLocalLevelModel(input_length=50)
         true_params = dict(γ=0., η=2., ρ=0.95, σ=1.5)
@@ -130,14 +126,12 @@ class TestFilteredLocalLevelModel(TorchTestCase):
         for i in range(10):
             ζ = StudentT(df=4, loc=0, scale=10).sample((fll.d,))
             sm = fll.kalman_smoother(y, ζ)
-            for k in ['z_upd', 'Σz_upd', 'z_smooth', 'Σz_smooth', 'y_pred',
-                      'Σy_pred']:
+            for k in ["z_upd", "Σz_upd", "z_smooth", "Σz_smooth", "y_pred", "Σy_pred"]:
                 self.assertIsInstance(sm[k], torch.Tensor)
                 self.assertFalse(any(torch.isnan(sm[k])))
 
 
 class TestAR2(TorchTestCase):
-
     def setUp(self):
         μ, ρ1, ρ2, σ = 1.5, 0.2, 0.1, 1.5
         torch.manual_seed(123)
@@ -159,6 +153,6 @@ class TestAR2(TorchTestCase):
         patch("ptvi.model.plt.show", fit.plot_sample_paths())
         patch("ptvi.model.plt.show", fit.plot_sample_paths(fc_steps=2))
         patch("ptvi.model.plt.show", fit.plot_pred_ci(fc_steps=2, true_y=self.y))
-        patch("ptvi.model.plt.show", fit.plot_marg_post('σ'))
+        patch("ptvi.model.plt.show", fit.plot_marg_post("σ"))
         patch("ptvi.model.plt.show", fit.plot_data())
         patch("ptvi.model.plt.show", fit.plot_elbos())

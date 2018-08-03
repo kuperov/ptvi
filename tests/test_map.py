@@ -16,7 +16,6 @@ class TestMap(unittest.TestCase):
         self.assertIsInstance(H, torch.Tensor)
         self.assertEqual(H.shape, (model.d, model.d))
 
-
     def test_initial_conditions(self):
         model = UnivariateGaussian()
         torch.manual_seed(123)
