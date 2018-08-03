@@ -137,8 +137,8 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
     def __repr__(self):
         return (
             f"Stochastic volatility model:\n"
-            f"\tx_t = exp(a * z_t/2) ε_t      t=1,...,{self.input_length}\n"
-            f"\tz_t = b + c * z_{{t-1}} + ν_t,  t=2,...,{self.input_length}\n"
+            f"\tx_t = exp(a * z_t/2) ε_t      t=1, …, {self.input_length}\n"
+            f"\tz_t = b + c * z_{{t-1}} + ν_t,  t=2, …, {self.input_length}\n"
             f"\tz_1 ~ N(b, sqrt(1/(1 - c^2)))\n"
             f"\twhere ε_t, ν_t ~ Ν(0,1)"
         )
@@ -151,9 +151,9 @@ class AR1Proposal(PFProposal):
         z_t = μ + ρ * z_{t-1} + η_t
     """
 
-    def __init__(self, μ, ρ):
-        assert -1 < ρ < 1
-        self.μ, self.ρ = μ, ρ
+    def __init__(self, μ, ρ, σ):
+        assert -1 < ρ < 1 and σ > 0
+        self.μ, self.ρ, self.σ = μ, ρ, σ
 
     def conditional_sample(self, t, Z):
         """Simulate z_t from q(z_t | z_{t-1}, φ)
@@ -177,5 +177,5 @@ class AR1Proposal(PFProposal):
         return (
             "AR(1) proposals:\n"
             f"\tz_t = {self.μ:.2f} + {self.ρ:.2f} * z_{{t-1}} + η_t\n"
-            f"\tη_t ~ Ν(0,1)"
+            f"\tη_t ~ Ν(0,{self.σ:.2f})"
         )
