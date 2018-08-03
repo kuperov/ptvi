@@ -1,29 +1,29 @@
 import torch
 from torch.distributions import *
-from ptvi import (Model, local_param, global_param)
+from ptvi import Model, local_param, global_param
 
 
 class StochVolModel(Model):
-    name = 'Stochastic volatility model'
+    name = "Stochastic volatility model"
     b = local_param()
     # λ = global_param(prior=Normal(0, 1e-4))
-    σ = global_param(prior=LogNormal(0, 1), rename='α', transform='log')
-    φ = global_param(prior=Beta(2, 2), rename='ψ', transform='logit')
+    σ = global_param(prior=LogNormal(0, 1), rename="α", transform="log")
+    φ = global_param(prior=Beta(2, 2), rename="ψ", transform="logit")
 
     def ln_joint(self, y, ζ):
         # b, λ, (σ, α), (φ, ψ) = self.unpack(ζ)
         b, (σ, α), (φ, ψ) = self.unpack(ζ)
         ar1_sd = torch.pow(1 - torch.pow(φ, 2), -0.5)
         llikelihood = (
-                Normal(0, torch.exp(.5 * (σ * b))).log_prob(y).sum()
-                # Normal(0, torch.exp(.5 * (λ + σ * b))).log_prob(y).sum()
-                + Normal(φ * b[:-1], 1).log_prob(b[1:]).sum()
-                + Normal(0., ar1_sd).log_prob(b[0])
+            Normal(0, torch.exp(.5 * (σ * b))).log_prob(y).sum()
+            # Normal(0, torch.exp(.5 * (λ + σ * b))).log_prob(y).sum()
+            + Normal(φ * b[:-1], 1).log_prob(b[1:]).sum()
+            + Normal(0., ar1_sd).log_prob(b[0])
         )
         lprior = (
-                self.ψ_prior.log_prob(ψ)
-                + self.α_prior.log_prob(α)
-                # + self.λ_prior.log_prob(λ)
+            self.ψ_prior.log_prob(ψ)
+            + self.α_prior.log_prob(α)
+            # + self.λ_prior.log_prob(λ)
         )
         return llikelihood + lprior
 

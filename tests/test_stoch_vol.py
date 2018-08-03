@@ -4,7 +4,6 @@ from ptvi.algos.sgvb import SGVBResult
 
 
 class TestStochVolModel(unittest.TestCase):
-
     def test_simulate(self):
         m = StochVolModel(input_length=50)
         y, b = m.simulate(λ=0.5, σ=0.1, φ=0.95)

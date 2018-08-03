@@ -6,18 +6,16 @@ from tests.test_util import TorchTestCase
 
 
 class TestMVNPrecisionTril(TorchTestCase):
-
     def test_logprob_dense(self):
         k = 5
         L = torch.zeros((k, k))
         torch.manual_seed(123)
-        L[np.tril_indices(k)] = torch.randn(k*(k+1)//2)
+        L[np.tril_indices(k)] = torch.randn(k * (k + 1) // 2)
         Λ = torch.matmul(L, L.t())
         Σ = Λ.inverse()
         μ = torch.randn(k)
         dist = MVNPrecisionTril(loc=μ, precision_tril=L)
-        dist_equiv = torch.distributions.MultivariateNormal(
-            loc=μ, covariance_matrix=Σ)
+        dist_equiv = torch.distributions.MultivariateNormal(loc=μ, covariance_matrix=Σ)
         H1 = dist.entropy()
         H2 = dist_equiv.entropy()
         self.assertTrue(torch.allclose(H1, H2, rtol=1e-2))
@@ -32,13 +30,13 @@ class TestMVNPrecisionTril(TorchTestCase):
 
     def test_logprob_sparse(self):
         from ptvi.sparse import sparse_prec_chol
+
         k = 5
         L = sparse_prec_chol(k, 2, 1, requires_grad=False)
         Σ = torch.eye(k)
         μ = torch.randn(k)
         dist = MVNPrecisionTril(loc=μ, precision_tril=L)
-        dist_equiv = torch.distributions.MultivariateNormal(
-            loc=μ, covariance_matrix=Σ)
+        dist_equiv = torch.distributions.MultivariateNormal(loc=μ, covariance_matrix=Σ)
         H1 = dist.entropy()
         H2 = dist_equiv.entropy()
         self.assertTrue(torch.allclose(H1, H2, rtol=1e-2))
@@ -52,5 +50,4 @@ class TestMVNPrecisionTril(TorchTestCase):
 
     def test_improper(self):
         im = Improper()
-        self.assertClose(im.log_prob(torch.tensor([1., 2., 3., 4.])),
-                         torch.zeros(4))
+        self.assertClose(im.log_prob(torch.tensor([1., 2., 3., 4.])), torch.zeros(4))
