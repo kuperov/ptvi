@@ -1,6 +1,6 @@
 import math
 import torch
-from torch.distributions import LogNormal, Normal, Categorical
+from torch.distributions import LogNormal, Normal, Beta, Categorical
 
 from ptvi import Model, global_param
 
@@ -15,10 +15,15 @@ class PFProposal(object):
 
 class FilteredStateSpaceModel(Model):
     def __init__(
-        self, input_length: int, proposal: PFProposal, num_particles: int = 50
+        self,
+        input_length: int,
+        proposal: PFProposal,
+        num_particles: int = 50,
+        resample=True,
     ):
         self.proposal: PFProposal = proposal
         self.num_particles = num_particles
+        self.resample = resample
         super().__init__(input_length)
 
     def simulate(self, *args, **kwargs):
@@ -50,11 +55,11 @@ class FilteredStateSpaceModel(Model):
         return llik_hat + lprior
 
     def simulate_log_phatN(
-        self, y: torch.Tensor, ζ: torch.Tensor, rewrite_history=False
+        self, y: torch.Tensor, ζ: torch.Tensor, rewrite_history=True
     ):
         """Apply particle filter to estimate log ^p(y | ζ)"""
         log_phatN = 0.
-        log_w = torch.tensor([math.log(1 / self.input_length)] * self.input_length)
+        log_w = torch.tensor([math.log(1 / self.num_particles)] * self.num_particles)
         Z = torch.zeros((self.input_length, self.num_particles))
         resampled = [False] * self.input_length
         for t in range(self.input_length):
@@ -74,7 +79,7 @@ class FilteredStateSpaceModel(Model):
                 else:
                     Z[t, :] = Z[t, a]
                 log_w = torch.tensor(
-                    [math.log(1 / self.input_length)] * self.input_length
+                    [math.log(1 / self.num_particles)] * self.num_particles
                 )
         return log_phatN, Z, resampled
 
@@ -90,7 +95,7 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
     name = "Particle filtered stochastic volatility model"
     a = global_param(prior=LogNormal(0, 1), transform="log", rename="α")
     b = global_param(prior=Normal(0, 1))
-    c = global_param(prior=LogNormal(0, 1), transform="log", rename="ψ")
+    c = global_param(prior=Beta(1, 1), transform="logit", rename="ψ")
 
     def simulate(self, a, b, c):
         """Simulate from p(x, z | θ)"""
@@ -123,7 +128,11 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
 
     def ln_prior(self, ζ):
         (_, α), b, (_, ψ) = self.unpack(ζ)
-        return self.α_prior(α) + self.b_prior(b) + self.ψ_prior(ψ)
+        return (
+            self.α_prior.log_prob(α)
+            + self.b_prior.log_prob(b)
+            + self.ψ_prior.log_prob(ψ)
+        )
 
     def __repr__(self):
         return (
