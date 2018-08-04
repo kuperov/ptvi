@@ -1,4 +1,5 @@
 import math
+from typing import Dict
 import torch
 from torch.distributions import LogNormal, Normal, Beta, Categorical
 
@@ -74,10 +75,8 @@ class FilteredStateSpaceModel(Model):
             if ESS < self.num_particles and self.resample:
                 resampled[t] = True
                 a = Categorical(torch.exp(log_w)).sample((self.num_particles,))
-                if rewrite_history:
-                    Z = Z[:, a]
-                else:
-                    Z[t, :] = Z[t, a]
+                Znew = Z[:, a]
+                Z = Znew
                 log_w = torch.tensor(
                     [math.log(1 / self.num_particles)] * self.num_particles
                 )
@@ -148,12 +147,29 @@ class AR1Proposal(PFProposal):
     """A simple linear/gaussian AR(1) to use as a particle filter proposal.
 
     .. math::
-        z_t = μ + ρ * z_{t-1} + η_t
+        z_t = μ + ρ * z_{t-1} + ε_t
+
+    The error term ε_t can be of any location-scale family. For example:
+
+        > from torch.distributions import *
+        > prop1 = AR1Proposal(ρ=0.9)  # by default, Normal(0, 1) and μ=0.
+        > prop2 = AR1Proposal(ρ=0.9, μ=0., ε_scale=1.5, ε_type=StudentT, df=3)
+        > prop3 = AR1Proposal(ρ=0.9, μ=0., ε_scale=1.5, ε_type=Gumbel)
+        > prop4 = AR1Proposal(ρ=0.9, μ=0., ε_scale=1.5, ε_type=Cauchy)
     """
 
-    def __init__(self, μ, ρ, σ):
-        assert -1 < ρ < 1 and σ > 0
-        self.μ, self.ρ, self.σ = μ, ρ, σ
+    def __init__(
+        self,
+        ρ: float,
+        μ: float = 0,
+        ε_scale: float = 1.,
+        ε_type: type = None,
+        **ε_kwargs: Dict,
+    ):
+        assert -1 < ρ < 1
+        self.ε_type = ε_type or Normal
+        self.ε_kwargs = ε_kwargs or {}
+        self.μ, self.ρ, self.ε_scale = μ, ρ, ε_scale
 
     def conditional_sample(self, t, Z):
         """Simulate z_t from q(z_t | z_{t-1}, φ)
@@ -162,20 +178,36 @@ class AR1Proposal(PFProposal):
         """
         N = Z.shape[1]
         if t == 0:
-            return Normal(0, (1 - self.ρ ** 2) ** (-.5)).sample((N,))
+            uncond_dist = self.ε_type(
+                loc=0, scale=(1 - self.ρ ** 2) ** (-.5) * self.ε_scale, **self.ε_kwargs
+            )
+            return uncond_dist.sample((N,))
         else:
-            return Normal(self.μ + self.ρ * Z[t - 1], 1).sample()
+            cond_dist = self.ε_type(
+                loc=self.μ + self.ρ * Z[t - 1], scale=self.ε_scale, **self.ε_kwargs
+            )
+            return cond_dist.sample()
 
     def conditional_log_prob(self, t, Z):
         """Compute log q(z_t | z_{t-1}, φ)"""
         if t == 0:
-            return Normal(0, (1 - self.ρ ** 2) ** (-.5)).log_prob(Z[t])
+            uncond_dist = self.ε_type(
+                loc=0, scale=(1 - self.ρ ** 2) ** (-.5) * self.ε_scale, **self.ε_kwargs
+            )
+            return uncond_dist.log_prob(Z[t])
         else:
-            return Normal(self.μ + self.ρ * Z[t - 1], 1).log_prob(Z[t])
+            cond_dist = self.ε_type(
+                loc=self.μ + self.ρ * Z[t - 1], scale=self.ε_scale, **self.ε_kwargs
+            )
+            return cond_dist.log_prob(Z[t])
 
     def __repr__(self):
+        typename = self.ε_type.__name__
+        params = {"loc": 0, "scale": self.ε_scale}
+        params.update(self.ε_kwargs)
+        param_str = ", ".join(f"{n}={v:.2f}" for n, v in params.items())
         return (
             "AR(1) proposals:\n"
-            f"\tz_t = {self.μ:.2f} + {self.ρ:.2f} * z_{{t-1}} + η_t\n"
-            f"\tη_t ~ Ν(0,{self.σ:.2f})"
+            f"\tz_t = {self.μ:.2f} + {self.ρ:.2f} * z_{{t-1}} + ε_t\n"
+            f"\tε_t ~ {typename}({param_str})"
         )
