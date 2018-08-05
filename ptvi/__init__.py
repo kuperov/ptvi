@@ -12,5 +12,6 @@ from .stopping import (
 )
 from .model import Model
 from .params import local_param, global_param
+from .fivo import FilteredStateSpaceModel
 from .models import *
 from .algos import *

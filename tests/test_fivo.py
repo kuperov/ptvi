@@ -1,9 +1,7 @@
 import tests.test_util
-import numbers
-import torch
 
-from ptvi.algos.fivo import *
-from ptvi import sgvb
+from ptvi.fivo import *
+from ptvi.models.filtered_sv_model import *
 
 
 class TestFIVO(tests.test_util.TorchTestCase):
@@ -11,7 +9,7 @@ class TestFIVO(tests.test_util.TorchTestCase):
         torch.manual_seed(123)
         T = 200
         model = FilteredStochasticVolatilityModel(
-            input_length=T, proposal=AR1Proposal(0, .95), num_particles=50
+            input_length=T, proposal=AR1Proposal(0, .95, 1.), num_particles=50
         )
         params = dict(a=1., b=0., c=.95)
         y, z_true = model.simulate(**params)

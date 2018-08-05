@@ -283,7 +283,7 @@ class SGVBResult(object):
                     paths[i, _τ:] = self.model.forecast(ζ, self.y, fc_steps=fc_steps)
         return paths
 
-    def summary(self):
+    def summary(self, true=None):
         """Return a pandas data frame summarizing model parameters"""
         # transform and simulate from marginal transformed parameters
         names, means, sds = [], [], []
@@ -300,7 +300,10 @@ class SGVBResult(object):
                 xs = post.sample((100,))
                 means.append(float(torch.mean(xs)))
                 sds.append(float(torch.std(xs)))
-        return pd.DataFrame({"mean": means, "sd": sds}, index=names)
+        cols = {"mean": means, "sd": sds}
+        if true is not None:
+            cols['true'] = [true.get(n, None) for n in names]
+        return pd.DataFrame(cols, index=names)
 
     def plot_elbos(self, skip=0):
         xs = range(skip, len(self.elbo_hats))
