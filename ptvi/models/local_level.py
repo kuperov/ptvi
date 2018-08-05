@@ -38,7 +38,7 @@ class LocalLevelModel(Model):
         y = Normal(γ + η * z, σ).sample()
         return y, z
 
-    def sample_observed(self, ζ, fc_steps=0):
+    def sample_observed(self, ζ, y, fc_steps=0):
         z, γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)
         if fc_steps > 0:
             z = torch.cat([z, torch.zeros(fc_steps)])

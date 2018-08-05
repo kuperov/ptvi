@@ -10,8 +10,9 @@ from .stopping import (
     MedianGrowthStoppingHeuristic,
     SupGrowthStoppingHeuristic,
 )
-from .model import Model
 from .params import local_param, global_param
-from .fivo import FilteredStateSpaceModel
-from .models import *
+from .mvn_posterior import MVNPosterior
+from .model import Model
 from .algos import *
+from .fivo import FilteredStateSpaceModel, FIVOResult
+from .models import *

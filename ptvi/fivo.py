@@ -2,10 +2,11 @@ import math
 import torch
 from torch.distributions import LogNormal, Normal, Beta, Categorical
 
+import numpy as np
+
 from ptvi import Model, global_param
+import ptvi
 
-
-# log_phatt = torch.logsumexp(, dim=0)
 
 if torch.version.__version__ >= '0.4.1':
     def logsumexp(xs):
@@ -14,6 +15,33 @@ else:
     def logsumexp(xs):
         m = torch.max(xs)
         return m + torch.log(torch.sum(torch.exp(xs - m)))
+
+
+class FIVOResult(ptvi.MVNPosterior):
+
+    def plot_latent(
+            self, N: int = 100, α: float = 0.05, true_z=None, fc_steps: int = 0
+    ):
+        import matplotlib.pyplot as plt
+        paths = self.sample_latent_paths(N, fc_steps=fc_steps)
+        ci_bands = np.empty([self.input_length + fc_steps, 2])
+        fxs, xs = range(self.input_length + fc_steps), range(self.input_length)
+        perc = 100 * np.array([α * 0.5, 1. - α * 0.5])
+        for t in fxs:
+            ci_bands[t, :] = np.percentile(paths[:, t], q=perc)
+        plt.fill_between(
+            fxs, ci_bands[:, 0], ci_bands[:, 1], alpha=0.5, label=f"{(1-α)*100:.0f}% CI"
+        )
+        if true_z is not None:
+            plt.plot(xs, true_z.numpy(), color="black", linewidth=2, label="z")
+            plt.legend()
+        if fc_steps > 0:
+            plt.axvline(x=self.input_length, color="black")
+            plt.title(
+                f"Posterior credible interval and " f"{fc_steps}-step-ahead forecast"
+            )
+        else:
+            plt.title(f"Posterior credible interval")
 
 
 class PFProposal(object):
@@ -25,6 +53,9 @@ class PFProposal(object):
 
 
 class FilteredStateSpaceModel(Model):
+
+    result_type = FIVOResult
+
     def __init__(
         self,
         input_length: int,
@@ -61,12 +92,12 @@ class FilteredStateSpaceModel(Model):
         raise NotImplementedError
 
     def ln_joint(self, y, ζ):
-        llik_hat, _, _ = self.simulate_log_phatN(y, ζ)
+        llik_hat = self.simulate_log_phatN(y, ζ)
         lprior = self.ln_prior(ζ)
         return llik_hat + lprior
 
     def simulate_log_phatN(
-        self, y: torch.Tensor, ζ: torch.Tensor, rewrite_history=True
+        self, y: torch.Tensor, ζ: torch.Tensor, sample: torch.Tensor=None
     ):
         """Apply particle filter to estimate marginal likelihood log ^p(y | ζ)"""
         log_phatN = 0.
@@ -85,14 +116,15 @@ class FilteredStateSpaceModel(Model):
             if ESS < self.num_particles and self.resample:
                 resampled[t] = True
                 a = Categorical(torch.exp(log_w)).sample((self.num_particles,))
-                if rewrite_history:
-                    Z = Z[:, a]
-                else:
-                    Z[t, :] = Z[t, a]
+                Z = Z[:, a]
                 log_w = torch.tensor(
                     [math.log(1 / self.num_particles)] * self.num_particles
                 )
-        return log_phatN, Z, resampled
+        if sample is not None:
+            # samples should be M * T, where M is the number of samples
+            assert sample.shape[0] >= self.input_length
+            sample[:self.input_length] = Z[:, Categorical(torch.exp(log_w)).sample()]
+        return log_phatN
 
 
 class AR1Proposal(PFProposal):

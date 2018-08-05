@@ -38,7 +38,7 @@ class StochVolModel(Model):
         y = Normal(loc=0., scale=torch.exp(0.5 * (λ + σ * b))).sample()
         return y, b
 
-    def sample_observed(self, ζ, fc_steps=0):
+    def sample_observed(self, ζ, y, fc_steps=0):
         b, (σ, α), (φ, ψ) = self.unpack(ζ)
         λ = 0.
         if fc_steps > 0:

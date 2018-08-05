@@ -4,6 +4,7 @@ import torch
 from torch.distributions import TransformedDistribution
 
 from ptvi.params import TransformedModelParameter, ModelParameter, LocalParameter
+from ptvi.mvn_posterior import MVNPosterior
 
 
 _DIVIDER = "―" * 80
@@ -16,6 +17,7 @@ class Model(object):
 
     name = "VI Model"
     has_observation_error = True  # true if outcome is imperfectly observed
+    result_type = MVNPosterior
 
     def __init__(self, input_length=None):
         self.input_length = input_length
@@ -75,12 +77,13 @@ class Model(object):
     def simulate(self, *args, **kwargs):
         raise NotImplementedError
 
-    def sample_observed(self, ζ, fc_steps=0):
+    def sample_observed(self, ζ, y, fc_steps=0):
         """Sample a path from the model, forecasting fc_steps additional steps,
         given parameters ζ (in transformed space).
 
         Args:
             ζ: parameter to condition on
+            y: observed data to optionally condition on
             fc_steps: number of steps to project forward
 
         Returns:

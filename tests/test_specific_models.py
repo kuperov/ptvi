@@ -2,9 +2,8 @@ import torch
 from torch.distributions import LogNormal, Normal, StudentT
 from unittest.mock import patch
 
-from ptvi import map, sgvb
+from ptvi import map, sgvb, MVNPosterior
 from ptvi.models import *
-from ptvi.algos.sgvb import SGVBResult
 from ptvi.algos.map import MAPResult
 
 from tests.test_util import TorchTestCase
@@ -36,7 +35,7 @@ class TestGaussian(TorchTestCase):
         fit = sgvb(
             model, y, max_iters=2 ** 4, num_draws=1, sim_entropy=True, quiet=True
         )
-        self.assertIsInstance(fit, SGVBResult)
+        self.assertIsInstance(fit, MVNPosterior)
 
     def test_plots(self):
         torch.manual_seed(123)
@@ -58,7 +57,7 @@ class TestLocalLevel(TorchTestCase):
         self.assertEqual(20, len(y))
         self.assertEqual(20, len(z))
         fit = sgvb(m, y, max_iters=8, quiet=True)
-        self.assertIsInstance(fit, SGVBResult)
+        self.assertIsInstance(fit, MVNPosterior)
 
     def test_map_inference(self):
         torch.manual_seed(123)
@@ -113,7 +112,7 @@ class TestFilteredLocalLevelModel(TorchTestCase):
         self.assertEqual(z.shape, (50,))
         torch.manual_seed(algo_seed)
         fit = sgvb(fll, y, max_iters=8, quiet=True)
-        self.assertIsInstance(fit, SGVBResult)
+        self.assertIsInstance(fit, MVNPosterior)
 
     def test_smoothing(self):
         # we should be able to run the kalman smoother over pretty much any

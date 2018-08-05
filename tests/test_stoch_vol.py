@@ -1,6 +1,5 @@
 import unittest
-from ptvi import StochVolModel, sgvb
-from ptvi.algos.sgvb import SGVBResult
+from ptvi import StochVolModel, sgvb, MVNPosterior
 
 
 class TestStochVolModel(unittest.TestCase):
@@ -14,4 +13,4 @@ class TestStochVolModel(unittest.TestCase):
         m = StochVolModel(input_length=50)
         y, b = m.simulate(λ=0.5, σ=0.5, φ=0.95)
         fit = sgvb(m, y, max_iters=5, quiet=True)
-        self.assertIsInstance(fit, SGVBResult)
+        self.assertIsInstance(fit, MVNPosterior)

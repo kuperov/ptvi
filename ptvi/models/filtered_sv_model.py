@@ -54,6 +54,26 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
             + self.ψ_prior.log_prob(ψ)
         )
 
+    def sample_observed(self, ζ, y, fc_steps=0):
+        (a, _), b, (c, _) = self.unpack(ζ)
+        z = self.sample_unobserved(ζ, y, fc_steps)
+        return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
+
+    def sample_unobserved(self, ζ, y, fc_steps=0):
+        assert y is not None
+        (a, _), b, (c, _) = self.unpack(ζ)
+        # get a sample of states by filtering wrt y
+        z = torch.empty((len(y)+fc_steps,))
+        self.simulate_log_phatN(y=y, ζ=ζ, sample=z)
+        # now project states forward fc_steps
+        if fc_steps > 0:
+            for t in range(self.input_length, self.input_length+fc_steps):
+                z[t] = b + c * z[t - 1] + Normal(0, 1).sample()
+        return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
+
+    def forecast(self, ζ, y, fc_steps):
+        pass
+
     def __repr__(self):
         return (
             f"Stochastic volatility model:\n"
