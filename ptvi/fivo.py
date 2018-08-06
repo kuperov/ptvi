@@ -8,21 +8,25 @@ from ptvi import Model, global_param
 import ptvi
 
 
-if torch.version.__version__ >= '0.4.1':
+if torch.version.__version__ >= "0.4.1":
+
     def logsumexp(xs):
         return torch.logsumexp(xs, dim=0)
+
+
 else:
+
     def logsumexp(xs):
         m = torch.max(xs)
         return m + torch.log(torch.sum(torch.exp(xs - m)))
 
 
 class FIVOResult(ptvi.MVNPosterior):
-
     def plot_latent(
-            self, N: int = 100, α: float = 0.05, true_z=None, fc_steps: int = 0
+        self, N: int = 100, α: float = 0.05, true_z=None, fc_steps: int = 0
     ):
         import matplotlib.pyplot as plt
+
         paths = self.sample_latent_paths(N, fc_steps=fc_steps)
         ci_bands = np.empty([self.input_length + fc_steps, 2])
         fxs, xs = range(self.input_length + fc_steps), range(self.input_length)
@@ -56,14 +60,7 @@ class FilteredStateSpaceModel(Model):
 
     result_type = FIVOResult
 
-    def __init__(
-        self,
-        input_length: int,
-        proposal: PFProposal,
-        num_particles: int = 50,
-        resample=True,
-    ):
-        self.proposal: PFProposal = proposal
+    def __init__(self, input_length: int, num_particles: int = 50, resample=True):
         self.num_particles = num_particles
         self.resample = resample
         super().__init__(input_length)
@@ -97,18 +94,20 @@ class FilteredStateSpaceModel(Model):
         return llik_hat + lprior
 
     def simulate_log_phatN(
-        self, y: torch.Tensor, ζ: torch.Tensor, sample: torch.Tensor=None
+        self, y: torch.Tensor, ζ: torch.Tensor, sample: torch.Tensor = None
     ):
-        """Apply particle filter to estimate marginal likelihood log ^p(y | ζ)"""
+        """Apply particle filter to estimate marginal likelihood log p^(y | ζ)"""
         log_phatN = 0.
-        log_w = torch.tensor([math.log(1 / self.num_particles)] * self.num_particles)
+        log_N = math.log(self.num_particles)
+        log_w = torch.full((self.num_particles,), -log_N)
         Z = None
+        proposal = self.proposal_for(y, ζ)
         for t in range(self.input_length):
-            zt = self.proposal.conditional_sample(t, Z, self.num_particles).unsqueeze(0)
+            zt = proposal.conditional_sample(t, Z, self.num_particles).unsqueeze(0)
             Z = torch.cat([Z, zt]) if Z is not None else zt
             log_αt = self.conditional_log_prob(
                 t, y, Z, ζ
-            ) - self.proposal.conditional_log_prob(t, Z)
+            ) - proposal.conditional_log_prob(t, Z)
             log_phatt = logsumexp(log_w + log_αt)
             log_phatN += log_phatt
             log_w += log_αt - log_phatt
@@ -116,14 +115,21 @@ class FilteredStateSpaceModel(Model):
             if self.resample and ESS < self.num_particles:
                 a = Categorical(torch.exp(log_w)).sample((self.num_particles,))
                 Z = (Z[:, a]).clone()
-                log_w = torch.tensor(
-                    [math.log(1 / self.num_particles)] * self.num_particles
-                )
+                log_w = torch.full((self.num_particles,), -log_N)
         if sample is not None:
             # samples should be M * T, where M is the number of samples
             assert sample.shape[0] >= self.input_length
-            sample[:self.input_length] = Z[:, Categorical(torch.exp(log_w)).sample()]
+            sample[: self.input_length] = Z[:, Categorical(torch.exp(log_w)).sample()]
         return log_phatN
+
+    def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
+        """Return the proposal distribution for the given parameters.
+
+        Args:
+            y: data vector
+            ζ: parameter vector
+        """
+        raise NotImplementedError
 
 
 class AR1Proposal(PFProposal):
@@ -134,7 +140,7 @@ class AR1Proposal(PFProposal):
     """
 
     def __init__(self, μ, ρ, σ):
-        assert -1 < ρ < 1 and σ > 0
+        assert -1 < ρ < 1 and σ > 0, f"ρ={ρ} and σ={σ}"
         self.μ, self.ρ, self.σ = μ, ρ, σ
 
     def conditional_sample(self, t, Z, N):

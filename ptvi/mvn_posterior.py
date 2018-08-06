@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from ptvi.params import TransformedModelParameter, ModelParameter, LocalParameter
 
+
 class MVNPosterior(object):
     """Base class for representing model results."""
 
@@ -52,16 +53,27 @@ class MVNPosterior(object):
             Nx(τ+fc_steps) tensor of sample paths
         """
         paths = torch.empty((N, self.input_length + fc_steps))
-        ζs = self.q.sample((N,))
-        for i in range(N):
-            ζ = ζs[i]
-            if self.model.has_observation_error:
-                paths[i, :] = self.model.sample_observed(ζ=ζ, y=self.y, fc_steps=fc_steps)
-            else:
-                _τ = self.input_length
-                paths[i, :_τ] = self.y
-                if fc_steps > 0:
-                    paths[i, _τ:] = self.model.forecast(ζ, self.y, fc_steps=fc_steps)
+        i, dropped = 0, 0
+        while i < N:
+            ζ = self.q.sample()
+            try:
+                if self.model.has_observation_error:
+                    paths[i, :] = self.model.sample_observed(
+                        ζ=ζ, y=self.y, fc_steps=fc_steps
+                    )
+                else:
+                    _τ = self.input_length
+                    paths[i, :_τ] = self.y
+                    if fc_steps > 0:
+                        paths[i, _τ:] = self.model.forecast(ζ, self.y, fc_steps=fc_steps)
+            except:
+                # the ζ we sampled blew stuff up - drop this observation
+                dropped += 1
+                continue
+            i += 1
+            if 20 < i < dropped:
+                # prevent infinite loop, since N is finite.
+                raise Exception(f'Iteration {i}/{N}: stopping at {dropped} dropped simulations.')
         return paths
 
     def sample_latent_paths(self, N=100, fc_steps=0):
@@ -100,7 +112,7 @@ class MVNPosterior(object):
                 sds.append(float(torch.std(xs)))
         cols = {"mean": means, "sd": sds}
         if true is not None:
-            cols['true'] = [true.get(n, None) for n in names]
+            cols["true"] = [true.get(n, None) for n in names]
         return pd.DataFrame(cols, index=names)
 
     def plot_elbos(self, skip=0):
@@ -112,7 +124,7 @@ class MVNPosterior(object):
         true_vals = true_vals or {}
         locals = [p for p in self.model.params if isinstance(p, LocalParameter)]
         if len(locals) == 0:
-            raise Exception('No local variables')
+            raise Exception("No local variables")
         fig, axes = plt.subplots(nrows=len(locals), ncols=1)
         if not isinstance(axes, collections.Iterable):
             axes = [axes]

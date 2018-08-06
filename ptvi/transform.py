@@ -21,6 +21,7 @@ import numpy as np
 #      |      >>>         result, = ctx.saved_tensors
 #      |      >>>         return grad_output * result
 
+
 def vec_to_tril(l):
     assert l.ndimension() == 1, "l should have dim=1"
     # lower triangle has k(k+1)//2 entries

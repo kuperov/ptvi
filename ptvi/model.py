@@ -60,7 +60,7 @@ class Model(object):
         unpacked = []
         index = 0
         for p in self.params:
-            opt_p = ζ[index : index + p.dimension]
+            opt_p = ζ[index : index + p.dimension].squeeze()
             if isinstance(p, TransformedModelParameter):
                 # transform parameter *back* to natural coordinates
                 nat_p = p.transform.inv(opt_p)

@@ -1,7 +1,7 @@
 import torch
 from torch.distributions import LogNormal, Normal, Beta
 
-from ptvi import FilteredStateSpaceModel, global_param
+from ptvi import FilteredStateSpaceModel, global_param, AR1Proposal, PFProposal
 
 
 class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
@@ -63,13 +63,17 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
         assert y is not None
         (a, _), b, (c, _) = self.unpack(ζ)
         # get a sample of states by filtering wrt y
-        z = torch.empty((len(y)+fc_steps,))
+        z = torch.empty((len(y) + fc_steps,))
         self.simulate_log_phatN(y=y, ζ=ζ, sample=z)
         # now project states forward fc_steps
         if fc_steps > 0:
-            for t in range(self.input_length, self.input_length+fc_steps):
+            for t in range(self.input_length, self.input_length + fc_steps):
                 z[t] = b + c * z[t - 1] + Normal(0, 1).sample()
         return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
+
+    def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
+        (a, _), b, (c, _) = self.unpack(ζ)
+        return AR1Proposal(μ=b, ρ=c, σ=1)
 
     def forecast(self, ζ, y, fc_steps):
         pass
