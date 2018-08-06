@@ -45,7 +45,7 @@ class FIVOResult(ptvi.MVNPosterior):
 
 
 class PFProposal(object):
-    def conditional_sample(self, t, Z):
+    def conditional_sample(self, t, Z, N):
         raise NotImplementedError
 
     def conditional_log_prob(self, t, Z):
@@ -102,10 +102,10 @@ class FilteredStateSpaceModel(Model):
         """Apply particle filter to estimate marginal likelihood log ^p(y | ζ)"""
         log_phatN = 0.
         log_w = torch.tensor([math.log(1 / self.num_particles)] * self.num_particles)
-        Z = torch.zeros((self.input_length, self.num_particles))
-        resampled = [False] * self.input_length
+        Z = None
         for t in range(self.input_length):
-            Z[t, :] = self.proposal.conditional_sample(t, Z)
+            zt = self.proposal.conditional_sample(t, Z, self.num_particles).unsqueeze(0)
+            Z = torch.cat([Z, zt]) if Z is not None else zt
             log_αt = self.conditional_log_prob(
                 t, y, Z, ζ
             ) - self.proposal.conditional_log_prob(t, Z)
@@ -113,10 +113,9 @@ class FilteredStateSpaceModel(Model):
             log_phatN += log_phatt
             log_w += log_αt - log_phatt
             ESS = 1. / torch.exp(2 * log_w).sum()
-            if ESS < self.num_particles and self.resample:
-                resampled[t] = True
+            if self.resample and ESS < self.num_particles:
                 a = Categorical(torch.exp(log_w)).sample((self.num_particles,))
-                Z = Z[:, a]
+                Z = (Z[:, a]).clone()
                 log_w = torch.tensor(
                     [math.log(1 / self.num_particles)] * self.num_particles
                 )
@@ -138,12 +137,11 @@ class AR1Proposal(PFProposal):
         assert -1 < ρ < 1 and σ > 0
         self.μ, self.ρ, self.σ = μ, ρ, σ
 
-    def conditional_sample(self, t, Z):
+    def conditional_sample(self, t, Z, N):
         """Simulate z_t from q(z_t | z_{0:t-1}, y_{0:t}, φ)
 
         Z has an extra dimension, of N particles.
         """
-        N = Z.shape[1]
         if t == 0:
             return Normal(0, (1 - self.ρ ** 2) ** (-.5)).sample((N,))
         else:

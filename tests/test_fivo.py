@@ -36,3 +36,25 @@ class TestFIVO(tests.test_util.TorchTestCase):
         patch("ptvi.model.plt.show", fit.plot_elbos())
         patch("ptvi.model.plt.show", fit.plot_pred_ci(N=10, fc_steps=2, true_y=y))
         patch("ptvi.model.plt.show", fit.plot_latent(N=10, true_z=z_true))
+
+    def test_log_phatN_gradient(self):
+        torch.manual_seed(123)
+        T = 200
+        model = FilteredStochasticVolatilityModel(
+            input_length=T, proposal=AR1Proposal(0, .95, 1.), num_particles=50
+        )
+        params = dict(a=1., b=0., c=.95)
+        y, z_true = model.simulate(**params)
+
+        ζ = torch.tensor(list(params.values()), requires_grad=True)
+        ghat = torch.zeros((3,))
+        reps = 5
+        for i in range(reps):
+            if ζ.grad is not None:
+                ζ.grad.zero_()
+            phatN = model.simulate_log_phatN(y, ζ)
+            phatN.backward()
+            ghat += ζ.grad
+        ghat /= reps
+        self.assertFalse(any(torch.isnan(ghat)))
+
