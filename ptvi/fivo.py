@@ -4,7 +4,6 @@ from torch.distributions import LogNormal, Normal, Beta, Categorical
 
 import numpy as np
 
-from ptvi import Model, global_param
 import ptvi
 
 
@@ -56,7 +55,7 @@ class PFProposal(object):
         raise NotImplementedError
 
 
-class FilteredStateSpaceModel(Model):
+class FilteredStateSpaceModel(ptvi.Model):
 
     result_type = FIVOResult
 

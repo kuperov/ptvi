@@ -22,9 +22,18 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
     def test_unpack(self):
         m = UnivariateGaussian()
         ζ = torch.tensor([1.5, 2.5])
+
         μ, (σ, η) = m.unpack(ζ)
         self.assertClose(1.5, μ)
         self.assertClose(torch.exp(torch.tensor(2.5)), σ)
+        self.assertClose(2.5, η)
+
+        μ, σ = m.unpack_natural(ζ)
+        self.assertClose(1.5, μ)
+        self.assertClose(torch.exp(torch.tensor(2.5)), σ)
+
+        μ, η = m.unpack_unrestricted(ζ)
+        self.assertClose(1.5, μ)
         self.assertClose(2.5, η)
 
     def test_param_attrs(self):

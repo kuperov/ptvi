@@ -70,6 +70,40 @@ class Model(object):
             index += p.dimension
         return tuple(unpacked)
 
+    def unpack_unrestricted(self, ζ: torch.Tensor):
+        """Unstack the vector ζ into individual parameters, in the order given
+        in self.params. For transformed parameters, optimization (transformed)
+        coordinates are used.
+        """
+        assert ζ.shape == (self.d,), f"Expected 1-tensor of length {self.d}"
+        unpacked = []
+        index = 0
+        for p in self.params:
+            opt_p = ζ[index : index + p.dimension].squeeze()
+            unpacked.append(opt_p)
+            index += p.dimension
+        return tuple(unpacked)
+
+    def unpack_natural(self, ζ: torch.Tensor):
+        """Unstack the vector ζ into individual parameters, in the order given
+        in self.params. For transformed parameters, natural parameters are returned (ie
+        the parameters are transformed back into parameters appropriate for the log
+        likelihood function.)
+        """
+        assert ζ.shape == (self.d,), f"Expected 1-tensor of length {self.d}"
+        unpacked = []
+        index = 0
+        for p in self.params:
+            opt_p = ζ[index : index + p.dimension].squeeze()
+            if isinstance(p, TransformedModelParameter):
+                # transform parameter *back* to natural coordinates
+                nat_p = p.transform.inv(opt_p)
+                unpacked.append(nat_p)
+            else:
+                unpacked.append(opt_p)
+            index += p.dimension
+        return tuple(unpacked)
+
     def ln_prior(self, ζ: torch.Tensor):
         """Compute log prior at ζ, with respect to transformed parameters (ie including
         jacobian adjustments from transformations into free parameters).

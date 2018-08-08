@@ -40,7 +40,7 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
                array may be longer)
             ζ: parameter to condition on; should be unpacked with self.unpack
         """
-        (a, _), b, (c, _), d, (e, _) = self.unpack(ζ)
+        a, b, c, d, e = self.unpack_natural(ζ)
         if t == 0:
             log_pzt = Normal(b, (1 - c ** 2) ** (-.5)).log_prob(z[t])
         else:
@@ -49,13 +49,13 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
         return log_pzt + log_pxt
 
     def sample_observed(self, ζ, y, fc_steps=0):
-        (a, α), b, (c, ψ), d, (e, ρ) = self.unpack(ζ)
+        a, _, _, _, _ = self.unpack_natural(ζ)
         z = self.sample_unobserved(ζ, y, fc_steps)
         return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
 
     def sample_unobserved(self, ζ, y, fc_steps=0):
         assert y is not None
-        (a, α), b, (c, ψ), d, (e, ρ) = self.unpack(ζ)
+        a, b, c, _, _ = self.unpack_natural(ζ)
         # get a sample of states by filtering wrt y
         z = torch.empty((len(y) + fc_steps,))
         self.simulate_log_phatN(y=y, ζ=ζ, sample=z)
@@ -66,7 +66,7 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
         return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
 
     def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
-        (a, α), b, (c, ψ), d, (e, ρ) = self.unpack(ζ)
+        _, _, _, d, e = self.unpack_natural(ζ)
         return AR1Proposal(μ=e, ρ=e, σ=1)
 
     def forecast(self, ζ, y, fc_steps):
