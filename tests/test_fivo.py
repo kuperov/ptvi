@@ -36,9 +36,9 @@ class TestFIVO(tests.test_util.TorchTestCase):
     def test_log_phatN_gradient(self):
         torch.manual_seed(123)
         T = 200
-        model = FilteredStochasticVolatilityModel(input_length=T, num_particles=50)
+        model = FilteredStochasticVolatilityModel(input_length=T, num_particles=5)
         params = dict(a=1., b=0., c=.95)
-        y, z_true = model.simulate(**params)
+        y, z_true = model.simulate(a=1., b=0., c=.95)
 
         ζ = torch.tensor(list(params.values()), requires_grad=True)
         ghat = torch.zeros((3,))

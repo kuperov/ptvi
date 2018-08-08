@@ -4,7 +4,7 @@ from torch.distributions import LogNormal, Normal, Beta
 from ptvi import FilteredStateSpaceModel, global_param, AR1Proposal, PFProposal
 
 
-class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
+class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
     """ A simple stochastic volatility model for estimating with FIVO.
 
     .. math::
@@ -16,6 +16,8 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
     a = global_param(prior=LogNormal(0, 1), transform="log", rename="α")
     b = global_param(prior=Normal(0, 1))
     c = global_param(prior=Beta(1, 1), transform="logit", rename="ψ")
+    d = global_param(prior=Normal(0, 1))
+    e = global_param(prior=Beta(1, 1), transform="logit", rename="ρ")
 
     def simulate(self, a, b, c):
         """Simulate from p(x, z | θ)"""
@@ -38,7 +40,7 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
                array may be longer)
             ζ: parameter to condition on; should be unpacked with self.unpack
         """
-        (a, _), b, (c, _) = self.unpack(ζ)
+        (a, _), b, (c, _), d, (e, _) = self.unpack(ζ)
         if t == 0:
             log_pzt = Normal(b, (1 - c ** 2) ** (-.5)).log_prob(z[t])
         else:
@@ -47,13 +49,13 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
         return log_pzt + log_pxt
 
     def sample_observed(self, ζ, y, fc_steps=0):
-        (a, α), b, (c, ψ) = self.unpack(ζ)
+        (a, α), b, (c, ψ), d, (e, ρ) = self.unpack(ζ)
         z = self.sample_unobserved(ζ, y, fc_steps)
         return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
 
     def sample_unobserved(self, ζ, y, fc_steps=0):
         assert y is not None
-        (a, α), b, (c, ψ) = self.unpack(ζ)
+        (a, α), b, (c, ψ), d, (e, ρ) = self.unpack(ζ)
         # get a sample of states by filtering wrt y
         z = torch.empty((len(y) + fc_steps,))
         self.simulate_log_phatN(y=y, ζ=ζ, sample=z)
@@ -64,8 +66,8 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
         return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
 
     def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
-        (a, α), b, (c, ψ) = self.unpack(ζ)
-        return AR1Proposal(μ=b, ρ=c, σ=1)
+        (a, α), b, (c, ψ), d, (e, ρ) = self.unpack(ζ)
+        return AR1Proposal(μ=e, ρ=e, σ=1)
 
     def forecast(self, ζ, y, fc_steps):
         pass
@@ -78,7 +80,7 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
             f"\tz_1 = b + 1/√(1 - c^2) ν_1\n"
             f"\twhere ε_t, ν_t ~ Ν(0,1)\n\n"
             f"Particle filter with {self.num_particles} particles, AR(1) proposal:\n"
-            f"\tz_t = b + c * z_{{t-1}} + η_t,  t=2, …, {self.input_length}\n"
-            f"\tz_1 = b + 1/√(1 - c^2) η_1\n"
+            f"\tz_t = d + e * z_{{t-1}} + η_t,  t=2, …, {self.input_length}\n"
+            f"\tz_1 = d + 1/√(1 - e^2) η_1\n"
             f"\twhere η_t ~ Ν(0,1)\n"
         )

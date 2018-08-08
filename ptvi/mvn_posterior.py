@@ -65,7 +65,9 @@ class MVNPosterior(object):
                     _τ = self.input_length
                     paths[i, :_τ] = self.y
                     if fc_steps > 0:
-                        paths[i, _τ:] = self.model.forecast(ζ, self.y, fc_steps=fc_steps)
+                        paths[i, _τ:] = self.model.forecast(
+                            ζ, self.y, fc_steps=fc_steps
+                        )
             except:
                 # the ζ we sampled blew stuff up - drop this observation
                 dropped += 1
@@ -73,7 +75,9 @@ class MVNPosterior(object):
             i += 1
             if 20 < i < dropped:
                 # prevent infinite loop, since N is finite.
-                raise Exception(f'Iteration {i}/{N}: stopping at {dropped} dropped simulations.')
+                raise Exception(
+                    f"Iteration {i}/{N}: stopping at {dropped} dropped simulations."
+                )
         return paths
 
     def sample_latent_paths(self, N=100, fc_steps=0):

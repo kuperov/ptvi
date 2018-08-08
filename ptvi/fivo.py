@@ -85,9 +85,6 @@ class FilteredStateSpaceModel(Model):
         """
         raise NotImplementedError
 
-    def ln_prior(self, ζ):
-        raise NotImplementedError
-
     def ln_joint(self, y, ζ):
         llik_hat = self.simulate_log_phatN(y, ζ)
         lprior = self.ln_prior(ζ)
@@ -111,15 +108,19 @@ class FilteredStateSpaceModel(Model):
             log_phatt = logsumexp(log_w + log_αt)
             log_phatN += log_phatt
             log_w += log_αt - log_phatt
-            ESS = 1. / torch.exp(2 * log_w).sum()
-            if self.resample and ESS < self.num_particles:
-                a = Categorical(torch.exp(log_w)).sample((self.num_particles,))
-                Z = (Z[:, a]).clone()
-                log_w = torch.full((self.num_particles,), -log_N)
+            with torch.no_grad():
+                ESS = 1. / torch.exp(2 * log_w).sum()
+                if self.resample and ESS < self.num_particles:
+                    a = Categorical(torch.exp(log_w)).sample((self.num_particles,))
+                    Z = (Z[:, a]).clone()
+                    log_w = torch.full((self.num_particles,), -log_N)
         if sample is not None:
-            # samples should be M * T, where M is the number of samples
-            assert sample.shape[0] >= self.input_length
-            sample[: self.input_length] = Z[:, Categorical(torch.exp(log_w)).sample()]
+            with torch.no_grad():
+                # samples should be M * T, where M is the number of samples
+                assert sample.shape[0] >= self.input_length
+                sample[: self.input_length] = Z[
+                    :, Categorical(torch.exp(log_w)).sample()
+                ]
         return log_phatN
 
     def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
