@@ -70,8 +70,28 @@ class Model(object):
             index += p.dimension
         return tuple(unpacked)
 
+    def ln_prior(self, ζ: torch.Tensor):
+        """Compute log prior at ζ, with respect to transformed parameters (ie including
+        jacobian adjustments from transformations into free parameters).
+        """
+        assert ζ.shape == (self.d,), f"Expected 1-tensor of length {self.d}"
+        index, lp = 0, 0.
+        for p in self.params:
+            opt_p = ζ[index : index + p.dimension].squeeze()
+            if isinstance(p, TransformedModelParameter):
+                prior_fn = getattr(self, p.tfm_prior_name)
+            else:
+                prior_fn = getattr(self, p.prior_name)
+            lp += prior_fn.log_prob(opt_p)
+            index += p.dimension
+        return lp
+
     def ln_joint(self, y, ζ):
         """Computes the log likelihood plus the log prior at ζ."""
+        return self.ln_likelihood(y, ζ) + self.ln_prior(ζ)
+
+    def ln_likelihood(self, y, ζ):
+        """Computes the log likelihood at ζ."""
         raise NotImplementedError
 
     def simulate(self, *args, **kwargs):

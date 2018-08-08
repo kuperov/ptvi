@@ -46,6 +46,13 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
 
         self.assertEqual(m.params, [m.z, m.a, m.b])
 
+        # check prior
+        ζ = torch.cat([torch.zeros(10), torch.tensor([1., 0.])])
+        lp_ζ = Normal(0, 1).log_prob(torch.tensor(1.)) + InvGamma(2, 2).log_prob(
+            torch.tensor(1.)
+        )
+        self.assertEqual(m.ln_prior(ζ), lp_ζ)
+
     def test_map(self):
         model = UnivariateGaussian()
         torch.manual_seed(123)

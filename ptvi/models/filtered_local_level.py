@@ -48,15 +48,7 @@ class FilteredLocalLevelModel(Model):
 
             llik += Normal(y_pred, torch.sqrt(Σy_pred)).log_prob(y[i])
 
-        lprior = (
-            self.ςz0_prior.log_prob(ςz0)
-            + self.z0_prior.log_prob(z0)
-            + self.γ_prior.log_prob(γ)
-            + self.ψ_prior.log_prob(ψ)
-            + self.ς_prior.log_prob(ς)
-            + self.φ_prior.log_prob(φ)
-        )
-        return llik + lprior
+        return llik + self.ln_prior(ζ)
 
     def simulate(
         self,
