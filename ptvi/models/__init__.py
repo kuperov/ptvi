@@ -8,6 +8,7 @@ from .filtered_sv_model import FilteredStochasticVolatilityModel
 from .filtered_sv_model_free_proposal import (
     FilteredStochasticVolatilityModelFreeProposal
 )
+from .filtered_sv_model_fixed_params import FilteredStochasticVolatilityModelFixedParams
 from .filtered_local_level import FilteredLocalLevelModel
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "FilteredLocalLevelModel",
     "FilteredStochasticVolatilityModel",
     "FilteredStochasticVolatilityModelFreeProposal",
+    "FilteredStochasticVolatilityModelFixedParams",
 ]

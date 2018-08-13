@@ -4,7 +4,7 @@ from torch.distributions import LogNormal, Normal, Beta
 from ptvi import FilteredStateSpaceModel, global_param, AR1Proposal, PFProposal
 
 
-class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
+class FilteredStochasticVolatilityModelFixedParams(FilteredStateSpaceModel):
     """ A simple stochastic volatility model for estimating with FIVO.
 
     .. math::
@@ -13,20 +13,22 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
     """
 
     name = "Particle filtered stochastic volatility model"
-    a = global_param(prior=LogNormal(0, 1), transform="log", rename="α")
-    b = global_param(prior=Normal(0, 1))
-    c = global_param(prior=Beta(1, 1), transform="logit", rename="ψ")
     d = global_param(prior=Normal(0, 1))
     e = global_param(prior=Beta(1, 1), transform="logit", rename="ρ")
 
-    def simulate(self, a, b, c):
+    def __init__(self, input_length, num_particles, resample):
+        self.a, self.b, self.c = torch.tensor(0.5), torch.tensor(1.), torch.tensor(0.95)
+        super().__init__(
+            input_length=input_length, num_particles=num_particles, resample=resample
+        )
+
+    def simulate(self):
         """Simulate from p(x, z | θ)"""
-        a, b, c = torch.tensor(a), torch.tensor(b), torch.tensor(c)
         z_true = torch.empty((self.input_length,))
-        z_true[0] = Normal(b, (1 - c ** 2) ** (-.5)).sample()
+        z_true[0] = Normal(self.b, (1 - self.c ** 2) ** (-.5)).sample()
         for t in range(1, self.input_length):
-            z_true[t] = b + c * z_true[t - 1] + Normal(0, 1).sample()
-        x = Normal(0, torch.exp(a) * torch.exp(z_true / 2)).sample()
+            z_true[t] = self.b + self.c * z_true[t - 1] + Normal(0, 1).sample()
+        x = Normal(0, torch.exp(self.a) * torch.exp(z_true / 2)).sample()
         return x, z_true
 
     def conditional_log_prob(self, t, y, z, ζ):
@@ -40,33 +42,31 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
                array may be longer)
             ζ: parameter to condition on; should be unpacked with self.unpack
         """
-        a, b, c, d, e = self.unpack_natural(ζ)
+        d, e = self.unpack_natural(ζ)
         if t == 0:
-            log_pzt = Normal(b, (1 - c ** 2) ** (-.5)).log_prob(z[t])
+            log_pzt = Normal(self.b, (1 - self.c ** 2) ** (-.5)).log_prob(z[t])
         else:
-            log_pzt = Normal(b + c * z[t - 1], 1).log_prob(z[t])
-        log_pxt = Normal(0, torch.exp(a) * torch.exp(z[t] / 2)).log_prob(y[t])
+            log_pzt = Normal(self.b + self.c * z[t - 1], 1).log_prob(z[t])
+        log_pxt = Normal(0, torch.exp(self.a) * torch.exp(z[t] / 2)).log_prob(y[t])
         return log_pzt + log_pxt
 
     def sample_observed(self, ζ, y, fc_steps=0):
-        a, _, _, _, _ = self.unpack_natural(ζ)
         z = self.sample_unobserved(ζ, y, fc_steps)
-        return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
+        return Normal(0, torch.exp(self.a) * torch.exp(z / 2)).sample()
 
     def sample_unobserved(self, ζ, y, fc_steps=0):
         assert y is not None
-        a, b, c, _, _ = self.unpack_natural(ζ)
         # get a sample of states by filtering wrt y
         z = torch.empty((len(y) + fc_steps,))
         self.simulate_log_phatN(y=y, ζ=ζ, sample=z)
         # now project states forward fc_steps
         if fc_steps > 0:
             for t in range(self.input_length, self.input_length + fc_steps):
-                z[t] = b + c * z[t - 1] + Normal(0, 1).sample()
-        return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
+                z[t] = self.b + self.c * z[t - 1] + Normal(0, 1).sample()
+        return Normal(0, torch.exp(self.a) * torch.exp(z / 2)).sample()
 
     def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
-        _, _, _, d, e = self.unpack_natural(ζ)
+        d, e = self.unpack_natural(ζ)
         return AR1Proposal(μ=d, ρ=e, σ=1)
 
     def forecast(self, ζ, y, fc_steps):
