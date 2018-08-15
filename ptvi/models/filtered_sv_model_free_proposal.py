@@ -10,6 +10,11 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
     .. math::
         x_t = exp(a)exp(z_t/2) ε_t       ε_t ~ Ν(0,1)
         z_t = b + c * z_{t-1} + ν_t    ν_t ~ Ν(0,1)
+
+    The proposal density is also an AR(1):
+
+    .. math::
+        z_t = d + e * z_{t-1} + η_t    η_t ~ Ν(0,1)
     """
 
     name = "Particle filtered stochastic volatility model"
