@@ -17,7 +17,7 @@ class FilteredStochasticVolatilityModelFixedParams(FilteredStateSpaceModel):
     e = global_param(prior=Beta(1, 1), transform="logit", rename="ρ")
 
     def __init__(self, input_length, num_particles, resample):
-        self.a, self.b, self.c = torch.tensor(0.5), torch.tensor(1.), torch.tensor(0.95)
+        self.a, self.b, self.c = map(torch.tensor, (0.5, 1., 0.95))
         super().__init__(
             input_length=input_length, num_particles=num_particles, resample=resample
         )
@@ -42,7 +42,6 @@ class FilteredStochasticVolatilityModelFixedParams(FilteredStateSpaceModel):
                array may be longer)
             ζ: parameter to condition on; should be unpacked with self.unpack
         """
-        d, e = self.unpack_natural(ζ)
         if t == 0:
             log_pzt = Normal(self.b, (1 - self.c ** 2) ** (-.5)).log_prob(z[t])
         else:
