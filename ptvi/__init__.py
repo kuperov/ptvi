@@ -12,7 +12,12 @@ from .stopping import (
 )
 from .params import local_param, global_param
 from .mvn_posterior import MVNPosterior
-from .model import Model
+from .model import (
+    Model,
+    FilteredStateSpaceModel,
+    PFProposal,
+    AR1Proposal,
+    FilteredStateSpaceModelFreeProposal,
+)
 from .algos import *
-from .fivo import FilteredStateSpaceModel, FIVOResult, PFProposal, AR1Proposal
 from .models import *

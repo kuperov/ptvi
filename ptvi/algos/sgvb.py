@@ -1,20 +1,9 @@
-import collections
-from typing import List
 import torch
 from time import time
 from torch.optim import Adadelta
-from torch.distributions import (
-    Distribution,
-    MultivariateNormal,
-    Normal,
-    TransformedDistribution,
-)
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
+from torch.distributions import MultivariateNormal, Normal
 
-from ptvi import Model, StoppingHeuristic, SupGrowthStoppingHeuristic
-from ptvi.params import TransformedModelParameter, LocalParameter
+from ptvi import Model, StoppingHeuristic, SupGrowthStoppingHeuristic, FilteredStateSpaceModelFreeProposal
 
 
 _DIVIDER = "―" * 80
@@ -208,6 +197,167 @@ def mf_sgvb(
     )
     q = Normal(u.detach(), torch.exp(omega.detach() / 2))
     return model.result_type(model, elbo_hats, y, q)
+
+
+def dual_sgvb(
+    model: FilteredStateSpaceModelFreeProposal,
+    y: torch.Tensor,
+    um0: torch.Tensor = None,
+    Lm0: torch.Tensor = None,
+    up0: torch.Tensor = None,
+    Lp0: torch.Tensor = None,
+    max_iters: int = 2 ** 20,
+    sim_entropy: bool = True,
+    stop_heur: StoppingHeuristic = None,
+    num_draws: int = 1,
+    model_optimizer_type: type = None,
+    proposal_optimizer_type: type = None,
+    quiet=False,
+    λ=.1,
+    model_opt_params=None,
+    proposal_opt_params=None,
+):
+    """Train the model using VI.
+
+    Args:
+        model: a Model instance to fit to the data
+        y: (a 1-tensor) data vector
+        max_iters: maximum number of iterations
+        sim_entropy: if true, simulate entropy term
+        quiet: suppress output
+        λ: exponential smoothing parameter for displaying estimated elbo
+           (display only; does not affect the optimization)
+
+    Returns:
+        A SGVBResult object with the approximate posterior.
+    """
+    stop_heur = stop_heur or _default_heuristic_type()
+
+    # dense approximation: q = N(u, LL')
+    um0 = torch.tensor(um0) if um0 is not None else torch.zeros(model.md)
+    Lm0 = torch.tensor(Lm0) if Lm0 is not None else torch.eye(model.md)
+
+    # dense approximation: q = N(u, LL')
+    up0 = torch.tensor(up0) if up0 is not None else torch.zeros(model.pd)
+    Lp0 = torch.tensor(Lp0) if Lp0 is not None else torch.eye(model.pd)
+
+    um = torch.tensor(um0, requires_grad=True)
+    Lm = torch.tensor(Lm0, requires_grad=True)
+
+    up = torch.tensor(up0, requires_grad=True)
+    Lp = torch.tensor(Lp0, requires_grad=True)
+
+    model_opt_params = model_opt_params or {}
+    proposal_opt_params = proposal_opt_params or {}
+
+    model_optimizer = (model_optimizer_type or Adadelta)([um, Lm], **model_opt_params)
+    prop_optimizer = (proposal_optimizer_type or Adadelta)(
+        [up, Lp], **proposal_opt_params
+    )
+
+    def qprint(s):
+        if not quiet:
+            print(s)
+
+    qprint(
+        _header(
+            "Alternating model/proposal structured",
+            model_optimizer,
+            sim_entropy,
+            stop_heur,
+            model.name,
+            num_draws,
+            λ,
+        )
+    )
+
+    def model_elbo_hat():
+        trL = torch.tril(Lm)
+        E_ln_joint, H_q_hat = 0., 0.  # accumulators
+        if not sim_entropy:
+            q = MultivariateNormal(loc=um, scale_tril=trL)
+            H_q_hat = -q.entropy()
+        else:
+            # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
+            q = MultivariateNormal(loc=um.detach(), scale_tril=trL.detach())
+        for _ in range(num_draws):
+            ζ = um + trL @ torch.randn((model.md,))  # reparam trick
+            η = up.detach() + Lp.detach() @ torch.randn((model.pd,))
+            E_ln_joint += model.ln_joint(y, ζ, η) / num_draws
+            if sim_entropy:
+                H_q_hat += q.log_prob(ζ) / num_draws
+        return E_ln_joint - H_q_hat
+
+    def proposal_elbo_hat():
+        trL = torch.tril(Lp)
+        E_ln_joint, H_q_hat = 0., 0.  # accumulators
+        if not sim_entropy:
+            q = MultivariateNormal(loc=up, scale_tril=trL)
+            H_q_hat = -q.entropy()
+        else:
+            # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
+            q = MultivariateNormal(loc=up.detach(), scale_tril=trL.detach())
+        for _ in range(num_draws):
+            ζ = um.detach() + Lm.detach() @ torch.randn((model.md,))
+            η = up + trL @ torch.randn((model.pd,))  # reparam trick
+            E_ln_joint += model.ln_joint(y, ζ, η) / num_draws
+            if sim_entropy:
+                H_q_hat += q.log_prob(ζ) / num_draws
+        return E_ln_joint - H_q_hat
+
+    t, i = -time(), 0
+    model_elbo_hats, proposal_elbo_hats = [], []
+    smoothed_model_objective = -model_elbo_hat().detach()
+    smoothed_proposal_objective = -proposal_elbo_hat().detach()
+    for i in range(max_iters):
+        model_optimizer.zero_grad()
+        model_objective = -model_elbo_hat()
+        model_objective.backward()
+        if torch.isnan(model_objective.detach()):
+            raise Exception("Infinite model objective; cannot continue.")
+        model_optimizer.step()
+        model_elbo_hats.append(-model_objective.detach())
+        smoothed_model_objective = (
+            λ * model_objective.detach() + (1. - λ) * smoothed_model_objective
+        )
+
+        prop_optimizer.zero_grad()
+        proposal_objective = -proposal_elbo_hat()
+        proposal_objective.backward()
+        if torch.isnan(proposal_objective.detach()):
+            raise Exception("Infinite proposal objective; cannot continue.")
+        prop_optimizer.step()
+        proposal_elbo_hats.append(-proposal_objective.detach())
+        smoothed_proposal_objective = (
+            λ * proposal_objective.detach() + (1. - λ) * smoothed_proposal_objective
+        )
+
+        if not i & (i - 1):
+            qprint(
+                f"{i: 8d}. smoothed model elbo ={float(-smoothed_model_objective):8.2f}, "
+                f"proposal elbo ={float(-smoothed_proposal_objective):8.2f}"
+            )
+        if stop_heur.early_stop(-model_objective.data):
+            qprint("Stopping heuristic criterion satisfied for model elbo")
+            break
+    else:
+        qprint("WARNING: maximum iterations reached.")
+    t += time()
+    qprint(
+        f"{i: 8d}. smoothed elbo ={float(-smoothed_model_objective):8.2f}\n"
+        f"Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n"
+        f"{_DIVIDER}"
+    )
+    u = torch.cat([um.detach(), up.detach()])
+    L = torch.cat(
+        [
+            torch.cat([Lm.detach(), torch.zeros((model.md, model.pd))], dim=1),
+            torch.cat([torch.zeros((model.pd, model.md)), Lp.detach()], dim=1),
+        ],
+        dim=0,
+    )
+    q = MultivariateNormal(u, scale_tril=L)
+    return model.result_type(model=model, elbo_hats=model_elbo_hats, y=y, q=q)
 
 
 def _header(
