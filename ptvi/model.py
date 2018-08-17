@@ -2,11 +2,7 @@ from typing import List
 
 import math
 import torch
-from torch.distributions import (
-    Normal,
-    Categorical,
-    TransformedDistribution,
-)
+from torch.distributions import Normal, Categorical, TransformedDistribution
 
 import ptvi
 from ptvi.params import TransformedModelParameter, ModelParameter, LocalParameter

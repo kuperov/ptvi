@@ -21,5 +21,5 @@ __all__ = [
     "FilteredStochasticVolatilityModel",
     "FilteredStochasticVolatilityModelFreeProposal",
     "FilteredStochasticVolatilityModelFixedParams",
-    "FilteredSVModelDualOpt"
+    "FilteredSVModelDualOpt",
 ]

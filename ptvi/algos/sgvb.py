@@ -3,7 +3,12 @@ from time import time
 from torch.optim import Adadelta
 from torch.distributions import MultivariateNormal, Normal
 
-from ptvi import Model, StoppingHeuristic, SupGrowthStoppingHeuristic, FilteredStateSpaceModelFreeProposal
+from ptvi import (
+    Model,
+    StoppingHeuristic,
+    SupGrowthStoppingHeuristic,
+    FilteredStateSpaceModelFreeProposal,
+)
 
 
 _DIVIDER = "―" * 80
@@ -302,7 +307,7 @@ def dual_sgvb(
             η = up + trL @ torch.randn((model.pd,))  # reparam trick
             E_ln_joint += model.ln_joint(y, ζ, η) / num_draws
             if sim_entropy:
-                H_q_hat += q.log_prob(ζ) / num_draws
+                H_q_hat += q.log_prob(η) / num_draws
         return E_ln_joint - H_q_hat
 
     t, i = -time(), 0
@@ -344,7 +349,8 @@ def dual_sgvb(
         qprint("WARNING: maximum iterations reached.")
     t += time()
     qprint(
-        f"{i: 8d}. smoothed elbo ={float(-smoothed_model_objective):8.2f}\n"
+        f"{i: 8d}. smoothed model elbo ={float(-smoothed_model_objective):8.2f}, "
+        f"proposal elbo ={float(-smoothed_proposal_objective):8.2f}\n"
         f"Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n"
         f"{_DIVIDER}"
     )
@@ -367,8 +373,9 @@ def _header(
         title = f"{inftype} SGVB Inference"
     else:
         title = f"{inftype} ADVI"
-    lines = [_DIVIDER, f"{title}: {model_name}"]
-    lines += [
+    lines = [
+        _DIVIDER,
+        f"{title}: {model_name}",
         f"  - Estimating elbo with M={num_draws};",
         f"  - {str(stop_heur)}",
         f"  - {type(optimizer).__name__} optimizer with param groups:",

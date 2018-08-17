@@ -69,7 +69,11 @@ class FilteredSVModelDualOpt(FilteredStateSpaceModelFreeProposal):
 
     def ln_prior(self, ζ: torch.Tensor) -> float:
         a, b, c = self.unpack_natural_model_parameters(ζ)
-        return self.a_prior.log_prob(a) + self.b_prior.log_prob(b) + self.c_prior.log_prob(c)
+        return (
+            self.a_prior.log_prob(a)
+            + self.b_prior.log_prob(b)
+            + self.c_prior.log_prob(c)
+        )
 
     def model_parameters(self):
         return [self.a, self.b, self.c]
@@ -146,19 +150,21 @@ class FilteredSVModelDualOpt(FilteredStateSpaceModelFreeProposal):
         return self._pd
 
     def sample_observed(self, ζ, y, fc_steps=0):
+        a, b, c = self.unpack_natural_model_parameters(ζ[:3])
         z = self.sample_unobserved(ζ, y, fc_steps)
-        return Normal(0, torch.exp(self.a) * torch.exp(z / 2)).sample()
+        return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
 
     def sample_unobserved(self, ζ, y, fc_steps=0):
         assert y is not None
+        a, b, c = self.unpack_natural_model_parameters(ζ[:3])
         # get a sample of states by filtering wrt y
         z = torch.empty((len(y) + fc_steps,))
         self.simulate_log_phatN(y=y, ζ=ζ[:3], η=ζ[3:], sample=z)
         # now project states forward fc_steps
         if fc_steps > 0:
             for t in range(self.input_length, self.input_length + fc_steps):
-                z[t] = self.b + self.c * z[t - 1] + Normal(0, 1).sample()
-        return Normal(0, torch.exp(self.a) * torch.exp(z / 2)).sample()
+                z[t] = b + c * z[t - 1] + Normal(0, 1).sample()
+        return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
 
     def __repr__(self):
         return (
