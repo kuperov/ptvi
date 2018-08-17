@@ -1,9 +1,9 @@
+import math
 import torch
 from torch.distributions import MultivariateNormal
 from time import time
 
-from ptvi import Model
-from ptvi.algos.sgvb import SGVBResult
+from ptvi import Model, MVNPosterior
 
 
 _DIVIDER = "―" * 80
@@ -38,8 +38,8 @@ def map(
             return loss
 
         loss = optimizer.step(closure)
-        qprint(f"{i:8d}. log joint = {-float(loss.data):.4f}")
-        if torch.isnan(loss):
+        qprint(f"{i:8d}. log joint = {-loss:.4f}")
+        if math.isnan(loss):
             raise Exception("Non-finite loss encountered.")
         elif last_loss and last_loss < loss + ε:
             qprint("Convergence criterion met.")
@@ -48,14 +48,14 @@ def map(
         last_loss = loss
     else:
         qprint("WARNING: maximum iterations reached.")
-    qprint(f"{i:8d}. log joint = {-float(loss.data):.4f}")
+    qprint(f"{i:8d}. log joint = {-loss:.4f}")
     t += time()
     qprint(f"Completed {i+1:d} iterations in {t:.2f}s @ {(i+1)/t:.2f} i/s.")
     qprint(_DIVIDER)
     return MAPResult(model=model, y=y, ζ=ζ.detach(), losses=losses)
 
 
-class MAPResult(SGVBResult):
+class MAPResult(MVNPosterior):
     def __init__(self, model, y, ζ, losses):
         self.model, self.y, self.ζ = model, y, ζ
         u, L = self.initial_conditions()

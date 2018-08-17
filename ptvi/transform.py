@@ -8,6 +8,19 @@ import torch
 import math
 import numpy as np
 
+#      |      >>> class Exp(Function):
+#      |      >>>
+#      |      >>>     @staticmethod
+#      |      >>>     def forward(ctx, i):
+#      |      >>>         result = i.exp()
+#      |      >>>         ctx.save_for_backward(result)
+#      |      >>>         return result
+#      |      >>>
+#      |      >>>     @staticmethod
+#      |      >>>     def backward(ctx, grad_output):
+#      |      >>>         result, = ctx.saved_tensors
+#      |      >>>         return grad_output * result
+
 
 def vec_to_tril(l):
     assert l.ndimension() == 1, "l should have dim=1"

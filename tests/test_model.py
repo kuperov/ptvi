@@ -3,7 +3,6 @@ import tests.test_util
 import pandas as pd
 from ptvi import *
 from ptvi.model import LocalParameter, ModelParameter, TransformedModelParameter
-from ptvi.algos.sgvb import SGVBResult
 from torch.distributions import Normal, LogNormal, TransformedDistribution, Transform
 import torch
 
@@ -23,9 +22,18 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
     def test_unpack(self):
         m = UnivariateGaussian()
         ζ = torch.tensor([1.5, 2.5])
+
         μ, (σ, η) = m.unpack(ζ)
         self.assertClose(1.5, μ)
         self.assertClose(torch.exp(torch.tensor(2.5)), σ)
+        self.assertClose(2.5, η)
+
+        μ, σ = m.unpack_natural(ζ)
+        self.assertClose(1.5, μ)
+        self.assertClose(torch.exp(torch.tensor(2.5)), σ)
+
+        μ, η = m.unpack_unrestricted(ζ)
+        self.assertClose(1.5, μ)
         self.assertClose(2.5, η)
 
     def test_param_attrs(self):
@@ -47,6 +55,13 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
 
         self.assertEqual(m.params, [m.z, m.a, m.b])
 
+        # check prior
+        ζ = torch.cat([torch.zeros(10), torch.tensor([1., 0.])])
+        lp_ζ = Normal(0, 1).log_prob(torch.tensor(1.)) + InvGamma(2, 2).log_prob(
+            torch.tensor(1.)
+        )
+        self.assertEqual(m.ln_prior(ζ), lp_ζ)
+
     def test_map(self):
         model = UnivariateGaussian()
         torch.manual_seed(123)
@@ -62,8 +77,8 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
         N, μ0, σ0 = 100, 5., 5.
         y = model.simulate(N=N, μ=μ0, σ=σ0)
         fit = sgvb(model, y, max_iters=20, quiet=True)
-        self.assertIsInstance(fit, SGVBResult)
+        self.assertIsInstance(fit, MVNPosterior)
         self.assertIsInstance(fit.summary(), pd.DataFrame)  # good smoke test
         fit = mf_sgvb(model, y, max_iters=20, quiet=True)
-        self.assertIsInstance(fit, SGVBResult)
+        self.assertIsInstance(fit, MVNPosterior)
         self.assertIsInstance(fit.summary(), pd.DataFrame)  # good smoke test

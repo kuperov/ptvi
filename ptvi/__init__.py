@@ -10,7 +10,14 @@ from .stopping import (
     MedianGrowthStoppingHeuristic,
     SupGrowthStoppingHeuristic,
 )
-from .model import Model
 from .params import local_param, global_param
-from .models import *
+from .mvn_posterior import MVNPosterior
+from .model import (
+    Model,
+    FilteredStateSpaceModel,
+    PFProposal,
+    AR1Proposal,
+    FilteredStateSpaceModelFreeProposal,
+)
 from .algos import *
+from .models import *
