@@ -2,6 +2,7 @@
 from .plotting import plot_dens
 from .sparse import sparse_prec_chol
 from .dist import InvGamma, InvWishart, Improper
+from .priors import *
 from .stopping import (
     ExponentialStoppingHeuristic,
     NullStoppingHeuristic,
