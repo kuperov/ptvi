@@ -24,7 +24,7 @@ def map(
         if not quiet:
             print(s)
 
-    qprint(f"{_DIVIDER}\nStochastic optimization: {model.name}\n{_DIVIDER}")
+    qprint(f"{_DIVIDER}\nMAP inference with L-BFGS: {model.name}\n{_DIVIDER}")
     if ζ0 is not None:
         ζ = torch.tensor(ζ0, requires_grad=True)
     else:
@@ -111,8 +111,7 @@ def stoch_opt(
     model: Model,
     y: torch.Tensor,
     ζ0=None,
-    max_iters=20,
-    ε=1e-4,
+    max_iters=2 ** 10,
     quiet=False,
     opt_type=None,
     stop_heur=None,
@@ -131,13 +130,13 @@ def stoch_opt(
     opt_type = opt_type or torch.optim.Adam
     stop_heur = stop_heur or SupGrowthStoppingHeuristic()
 
-    qprint(f"{_DIVIDER}\nMAP inference with L-BFGS: {model.name}\n{_DIVIDER}")
+    qprint(f"{_DIVIDER}\nStochastic optimization: {model.name}\n{_DIVIDER}")
     if ζ0 is not None:
         ζ = torch.tensor(ζ0, requires_grad=True)
     else:
         ζ = torch.zeros(model.d, requires_grad=True)
     optimizer = opt_type([ζ], **kwargs)
-    last_loss, t, losses = None, -time(), []
+    t, losses = -time(), []
     for i in range(max_iters):
 
         def closure():
@@ -150,11 +149,10 @@ def stoch_opt(
         qprint(f"{i:8d}. loss = {-loss:.4f}")
         if math.isnan(loss):
             raise Exception("Non-finite loss encountered.")
-        elif last_loss and last_loss < loss + ε:
+        elif stop_heur.early_stop(loss.detach()):
             qprint("Convergence criterion met.")
             break
         losses.append(loss)
-        last_loss = loss
     else:
         qprint("WARNING: maximum iterations reached.")
     qprint(f"{i:8d}. log joint = {-loss:.4f}")
@@ -166,10 +164,11 @@ def stoch_opt(
 
 class StochOptResult(object):
     def __init__(self, model, y, ζ, losses):
-        self.model, self.y, self.ζ = model, y, ζ
-        super().__init__(model, losses, y, q)
+        self.model, self.y, self.ζ, self.losses = model, y, ζ, losses
 
-    def plot_elbos(self, skip=0):
+    def plot_losses(self, skip=0):
+        import matplotlib.pyplot as plt
+
         xs = range(skip, len(self.losses))
         plt.plot(xs, self.losses[skip:])
         plt.title(r"Estimated loss by iteration")
@@ -180,10 +179,10 @@ class StochOptResult(object):
         names, estimates = [], []
         index = 0
         for p in self.model.params:
-            if p.dimension > 1 and post is not None:
+            if p.dimension > 1:
                 continue
             names.append(p.name)
-            estimates.append(float(self.ζ[index:index+p.dimension]))
+            estimates.append(float(self.ζ[index : index + p.dimension]))
             index += p.dimension
         cols = {"estimate": estimates}
         if true is not None:

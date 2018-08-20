@@ -19,5 +19,6 @@ from .model import (
     AR1Proposal,
     FilteredStateSpaceModelFreeProposal,
 )
+from .trace import PointEstimateTracer
 from .algos import *
 from .models import *

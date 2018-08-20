@@ -27,3 +27,19 @@ class TestMap(unittest.TestCase):
         self.assertIsInstance(L, torch.Tensor)
         self.assertEqual(u.shape, (model.d,))
         self.assertEqual(L.shape, (model.d, model.d))
+
+
+class TestStochOpt(unittest.TestCase):
+    def test_basic_optimization(self):
+        data_seed, algo_seed = 123, 123
+        params = dict(a=1., b=0., c=.95)
+        T = 200
+        model = FilteredStochasticVolatilityModelFreeProposal(
+            input_length=T, num_particles=30, resample=True
+        )
+        torch.manual_seed(data_seed)
+        y, z_true = model.simulate(**params)
+        torch.manual_seed(algo_seed)
+        fit = stoch_opt(model, y, max_iters=10, quiet=True)
+        # if this converges before 10 iters, something is wrong
+        self.assertEqual(len(fit.losses), 10)

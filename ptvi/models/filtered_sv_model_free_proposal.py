@@ -23,6 +23,7 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
     c = global_param(prior=Beta(1, 1), transform="logit", rename="ψ")
     d = global_param(prior=Normal(0, 1))
     e = global_param(prior=Beta(1, 1), transform="logit", rename="ρ")
+    f = global_param(prior=LogNormal(0, 1), transform="log", rename="ι")
 
     def simulate(self, a, b, c):
         """Simulate from p(x, z | θ)"""
@@ -45,7 +46,7 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
                array may be longer)
             ζ: parameter to condition on; should be unpacked with self.unpack
         """
-        a, b, c, d, e = self.unpack_natural(ζ)
+        a, b, c, _, _, _ = self.unpack_natural(ζ)
         if t == 0:
             log_pzt = Normal(b, (1 - c ** 2) ** (-.5)).log_prob(z[t])
         else:
@@ -60,7 +61,7 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
 
     def sample_unobserved(self, ζ, y, fc_steps=0):
         assert y is not None
-        a, b, c, _, _ = self.unpack_natural(ζ)
+        a, b, c, _, _, _ = self.unpack_natural(ζ)
         # get a sample of states by filtering wrt y
         z = torch.empty((len(y) + fc_steps,))
         self.simulate_log_phatN(y=y, ζ=ζ, sample=z)
@@ -71,21 +72,21 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
         return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
 
     def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
-        _, _, _, d, e = self.unpack_natural(ζ)
-        return AR1Proposal(μ=d, ρ=e, σ=1)
+        _, _, _, d, e, f = self.unpack_natural(ζ)
+        return AR1Proposal(μ=d, ρ=e, σ=f)
 
     def forecast(self, ζ, y, fc_steps):
         pass
 
     def __repr__(self):
         return (
-            f"Stochastic volatility model:\n"
-            f"\tx_t = exp(a * z_t/2) ε_t      t=1, …, {self.input_length}\n"
-            f"\tz_t = b + c * z_{{t-1}} + ν_t,  t=2, …, {self.input_length}\n"
+            f"Stochastic volatility model with parameters {{a, b, c}}:\n"
+            f"\tx_t = exp(a * z_t/2) ε_t        t=1,…,{self.input_length}\n"
+            f"\tz_t = b + c * z_{{t-1}} + ν_t,    t=2,…,{self.input_length}\n"
             f"\tz_1 = b + 1/√(1 - c^2) ν_1\n"
             f"\twhere ε_t, ν_t ~ Ν(0,1)\n\n"
-            f"Particle filter with {self.num_particles} particles, AR(1) proposal:\n"
-            f"\tz_t = d + e * z_{{t-1}} + η_t,  t=2, …, {self.input_length}\n"
-            f"\tz_1 = d + 1/√(1 - e^2) η_1\n"
+            f"Filter with {self.num_particles} particles; AR(1) proposal params {{d, e, f}}:\n"
+            f"\tz_t = d + e * z_{{t-1}} + f η_t,  t=2,…,{self.input_length}\n"
+            f"\tz_1 = d + f/√(1 - e^2) η_1\n"
             f"\twhere η_t ~ Ν(0,1)\n"
         )
