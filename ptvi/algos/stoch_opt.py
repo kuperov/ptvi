@@ -5,6 +5,7 @@ from time import time
 import pandas as pd
 
 from ptvi import Model, SupGrowthStoppingHeuristic, PointEstimateTracer
+from ptvi.params import TransformedModelParameter
 
 
 _DIVIDER = "―" * 80
@@ -44,9 +45,6 @@ def stoch_opt(
     t, losses, smooth_loss = -time(), [], None
     for i in range(int(max_iters)):
 
-        if tracer is not None:
-            tracer.append(ζ)
-
         def closure():
             optimizer.zero_grad()
             loss = -model.ln_joint(y, ζ)
@@ -58,6 +56,8 @@ def stoch_opt(
         smooth_loss = (
             loss_d if smooth_loss is None else λ * loss_d + smooth_loss * (1 - λ)
         )
+        if tracer is not None:
+            tracer.append(ζ, loss_d)
         if not i & (i - 1):
             qprint(f"{i:8d}. smoothed stochastic loss = {smooth_loss:.1f}")
         if math.isnan(loss_d):
@@ -111,7 +111,11 @@ class StochOptResult(object):
             if p.dimension > 1:
                 continue
             names.append(p.name)
-            estimates.append(float(self.ζ[index : index + p.dimension]))
+            if isinstance(p, TransformedModelParameter):
+                t = p.transform.inv
+                estimates.append(float(t(self.ζ[index: index + p.dimension])))
+            else:
+                estimates.append(float(self.ζ[index: index + p.dimension]))
             index += p.dimension
         cols = {"estimate": estimates}
         if true is not None:

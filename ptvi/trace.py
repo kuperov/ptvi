@@ -1,7 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 
-from ptvi.params import TransformedModelParameter, ModelParameter, LocalParameter
+from ptvi.params import TransformedModelParameter
 
 
 class PointEstimateTracer(object):
@@ -11,6 +11,7 @@ class PointEstimateTracer(object):
         self.model = model
         self.natural_values, self.unconstrained_values = [], []
         self.natural_varnames, self.unconstrained_varnames = [], []
+        self.objectives = []
         self.transforms = []
         index = 0
         for p in model.params:
@@ -25,13 +26,10 @@ class PointEstimateTracer(object):
                 self.transforms.append(None)
             index += p.dimension
 
-    def append(self, param_value):
+    def append(self, param_value, objective):
         to_add = param_value.detach().clone()
         self.unconstrained_values.append(to_add)
-
-    def __iadd__(self, param_value):
-        """Add another progress value."""
-        self.append(param_value)
+        self.objectives.append(objective)
 
     def to_unconstrained_array(self):
         return torch.stack(self.unconstrained_values)
@@ -59,3 +57,8 @@ class PointEstimateTracer(object):
             axes[i, 1].plot(u_values[:, i].numpy(), label=self.unconstrained_varnames[i])
             axes[i, 1].legend()
         plt.suptitle('Optimization trace - point estimates')
+
+    def plot_objectives(self, skip=0):
+        xs = range(skip, len(self.objectives))
+        plt.plot(xs, self.objectives[skip:])
+        plt.title(r"Estimated objective by iteration")
