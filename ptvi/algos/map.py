@@ -3,7 +3,9 @@ import torch
 from torch.distributions import MultivariateNormal
 from time import time
 
-from ptvi import Model, MVNPosterior
+import pandas as pd
+
+from ptvi import Model, MVNPosterior, SupGrowthStoppingHeuristic
 
 
 _DIVIDER = "―" * 80
@@ -22,7 +24,7 @@ def map(
         if not quiet:
             print(s)
 
-    qprint(f"{_DIVIDER}\nMAP inference with L-BGFS: {model.name}\n{_DIVIDER}")
+    qprint(f"{_DIVIDER}\nStochastic optimization: {model.name}\n{_DIVIDER}")
     if ζ0 is not None:
         ζ = torch.tensor(ζ0, requires_grad=True)
     else:
@@ -103,3 +105,87 @@ class MAPResult(MVNPosterior):
         nHinv = torch.inverse(-mask * H)
         Lv = torch.potrf(nHinv, upper=False)
         return self.ζ, Lv
+
+
+def stoch_opt(
+    model: Model,
+    y: torch.Tensor,
+    ζ0=None,
+    max_iters=20,
+    ε=1e-4,
+    quiet=False,
+    opt_type=None,
+    stop_heur=None,
+    **kwargs,
+):
+    """Use stochastic optimization to compute the maximum a postiori (MAP) by maximizing
+    the log joint function with respect to the parameter ζ (in optimization space).
+
+    Call self.unpack() to convert parameters in natural coordinates.
+    """
+
+    def qprint(s):
+        if not quiet:
+            print(s)
+
+    opt_type = opt_type or torch.optim.Adam
+    stop_heur = stop_heur or SupGrowthStoppingHeuristic()
+
+    qprint(f"{_DIVIDER}\nMAP inference with L-BFGS: {model.name}\n{_DIVIDER}")
+    if ζ0 is not None:
+        ζ = torch.tensor(ζ0, requires_grad=True)
+    else:
+        ζ = torch.zeros(model.d, requires_grad=True)
+    optimizer = opt_type([ζ], **kwargs)
+    last_loss, t, losses = None, -time(), []
+    for i in range(max_iters):
+
+        def closure():
+            optimizer.zero_grad()
+            loss = -model.ln_joint(y, ζ)
+            loss.backward()
+            return loss
+
+        loss = optimizer.step(closure)
+        qprint(f"{i:8d}. loss = {-loss:.4f}")
+        if math.isnan(loss):
+            raise Exception("Non-finite loss encountered.")
+        elif last_loss and last_loss < loss + ε:
+            qprint("Convergence criterion met.")
+            break
+        losses.append(loss)
+        last_loss = loss
+    else:
+        qprint("WARNING: maximum iterations reached.")
+    qprint(f"{i:8d}. log joint = {-loss:.4f}")
+    t += time()
+    qprint(f"Completed {i+1:d} iterations in {t:.2f}s @ {(i+1)/t:.2f} i/s.")
+    qprint(_DIVIDER)
+    return StochOptResult(model=model, y=y, ζ=ζ.detach(), losses=losses)
+
+
+class StochOptResult(object):
+    def __init__(self, model, y, ζ, losses):
+        self.model, self.y, self.ζ = model, y, ζ
+        super().__init__(model, losses, y, q)
+
+    def plot_elbos(self, skip=0):
+        xs = range(skip, len(self.losses))
+        plt.plot(xs, self.losses[skip:])
+        plt.title(r"Estimated loss by iteration")
+
+    def summary(self, true=None):
+        """Return a pandas data frame summarizing model parameters"""
+        # transform and simulate from marginal transformed parameters
+        names, estimates = [], []
+        index = 0
+        for p in self.model.params:
+            if p.dimension > 1 and post is not None:
+                continue
+            names.append(p.name)
+            estimates.append(float(self.ζ[index:index+p.dimension]))
+            index += p.dimension
+        cols = {"estimate": estimates}
+        if true is not None:
+            cols["true"] = [true.get(n, None) for n in names]
+        return pd.DataFrame(cols, index=names)

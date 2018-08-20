@@ -26,7 +26,7 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
 
     def simulate(self, a, b, c):
         """Simulate from p(x, z | θ)"""
-        a, b, c = torch.tensor(a), torch.tensor(b), torch.tensor(c)
+        a, b, c = map(torch.tensor, (a, b, c))
         z_true = torch.empty((self.input_length,))
         z_true[0] = Normal(b, (1 - c ** 2) ** (-.5)).sample()
         for t in range(1, self.input_length):
