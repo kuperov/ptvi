@@ -1,14 +1,14 @@
 import torch
 from torch.distributions import *
-from ptvi import Model, local_param, global_param
+from ptvi import Model, local_param, global_param, LogNormalPrior, BetaPrior
 
 
 class StochVolModel(Model):
     name = "Stochastic volatility model"
     b = local_param()
     # λ = global_param(prior=Normal(0, 1e-4))
-    σ = global_param(prior=LogNormal(0, 1), rename="α", transform="log")
-    φ = global_param(prior=Beta(2, 2), rename="ψ", transform="logit")
+    σ = global_param(prior=LogNormalPrior(0, 1), rename="α", transform="log")
+    φ = global_param(prior=BetaPrior(2, 2), rename="ψ", transform="logit")
 
     def ln_joint(self, y, ζ):
         # b, λ, (σ, α), (φ, ψ) = self.unpack(ζ)

@@ -1,10 +1,17 @@
-import math
+from warnings import warn
 import tests.test_util
 import pandas as pd
 from ptvi import *
 from ptvi.model import LocalParameter, ModelParameter, TransformedModelParameter
 from torch.distributions import Normal, LogNormal, TransformedDistribution, Transform
 import torch
+
+
+if torch.cuda.is_available():
+    cuda = torch.device("cuda")
+else:
+    warn("WARNING: CUDA unavailable, running tests on CPU")
+    cuda = torch.device("cpu")
 
 
 class TestGaussianModel(tests.test_util.TorchTestCase):
@@ -39,13 +46,13 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
     def test_param_attrs(self):
         class TestModel(Model):
             z = local_param()
-            a = global_param(prior=Normal(0, 1))
-            b = global_param(prior=InvGamma(2, 2), transform="log")
+            a = global_param(prior=NormalPrior(0, 1))
+            b = global_param(prior=InvGammaPrior(2, 2), transform="log")
 
         m = TestModel(input_length=10)
         self.assertIsInstance(m.z, LocalParameter)
         self.assertEqual(m.z.name, "z")
-        self.assertIsInstance(m.z.prior, Improper)
+        self.assertIsInstance(m.z.prior, ImproperPrior)
         self.assertIsInstance(m.a, ModelParameter)
 
         self.assertIsInstance(m.b, TransformedModelParameter)
@@ -82,3 +89,22 @@ class TestGaussianModel(tests.test_util.TorchTestCase):
         fit = mf_sgvb(model, y, max_iters=20, quiet=True)
         self.assertIsInstance(fit, MVNPosterior)
         self.assertIsInstance(fit.summary(), pd.DataFrame)  # good smoke test
+
+
+class TestFilteredModel(tests.test_util.TorchTestCase):
+    def test_SV_filtered_gpu(self):
+        params = dict(a=1., b=0., c=.95)
+        T = 200
+        model = FilteredStochasticVolatilityModelFreeProposal(
+            input_length=T,
+            num_particles=3000,
+            resample=True,
+            device=cuda,
+            dtype=torch.float64,
+        )
+        torch.manual_seed(123)
+        y, z_true = model.simulate(**params)
+        self.assertEqual(y.device.type, cuda.type)
+        self.assertEqual(z_true.device.type, cuda.type)
+        ζ0 = torch.zeros((6,), device=cuda, dtype=torch.float64)
+        lj = model.ln_joint(y, ζ0)

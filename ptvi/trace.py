@@ -52,11 +52,13 @@ class PointEstimateTracer(object):
         n = len(self.natural_varnames)
         fig, axes = plt.subplots(n, 2, **fig_kw)
         for i in range(n):
-            axes[i, 0].plot(c_values[:, i].numpy(), label=self.natural_varnames[i])
+            axes[i, 0].plot(c_values[:, i].cpu().numpy(), label=self.natural_varnames[i])
             axes[i, 0].legend()
-            axes[i, 1].plot(u_values[:, i].numpy(), label=self.unconstrained_varnames[i])
+            axes[i, 1].plot(
+                u_values[:, i].cpu().numpy(), label=self.unconstrained_varnames[i]
+            )
             axes[i, 1].legend()
-        plt.suptitle('Optimization trace - point estimates')
+        plt.suptitle("Optimization trace - point estimates")
 
     def plot_objectives(self, skip=0):
         xs = range(skip, len(self.objectives))

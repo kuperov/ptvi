@@ -49,8 +49,8 @@ def sgvb(
     u0 = torch.tensor(u0) if u0 is not None else torch.zeros(model.d)
     L0 = torch.tensor(L0) if L0 is not None else torch.eye(model.d)
 
-    u = torch.tensor(u0, requires_grad=True)
-    L = torch.tensor(L0, requires_grad=True)
+    u = torch.tensor(u0, requires_grad=True, dtype=model.dtype, device=model.device)
+    L = torch.tensor(L0, requires_grad=True, dtype=model.dtype, device=model.device)
 
     optimizer = (optimizer_type or Adadelta)([u, L], **opt_params)
 
@@ -59,9 +59,7 @@ def sgvb(
             print(s)
 
     qprint(
-        _header(
-            "Structured", optimizer, sim_entropy, stop_heur, model.name, num_draws, λ
-        )
+        _header("Structured", optimizer, sim_entropy, stop_heur, model, num_draws, λ)
     )
 
     def elbo_hat():
@@ -74,7 +72,8 @@ def sgvb(
             # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
             q = MultivariateNormal(loc=u.detach(), scale_tril=trL.detach())
         for _ in range(num_draws):
-            ζ = u + trL @ torch.randn((model.d,))  # reparam trick
+            ε = torch.randn((model.d,), device=model.device, dtype=model.dtype)
+            ζ = u + trL @ ε  # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
             if sim_entropy:
                 H_q_hat += q.log_prob(ζ) / num_draws
@@ -82,19 +81,19 @@ def sgvb(
 
     t, i = -time(), 0
     elbo_hats = []
-    smoothed_objective = -elbo_hat().data
+    smoothed_objective = -elbo_hat().detach()
     for i in range(max_iters):
         optimizer.zero_grad()
         objective = -elbo_hat()
         objective.backward()
-        if torch.isnan(objective.data):
+        if torch.isnan(objective.detach()):
             raise Exception("Infinite objective; cannot continue.")
         optimizer.step()
-        elbo_hats.append(-objective.data)
-        smoothed_objective = λ * objective.data + (1. - λ) * smoothed_objective
+        elbo_hats.append(-objective.detach())
+        smoothed_objective = λ * objective.detach() + (1. - λ) * smoothed_objective
         if not i & (i - 1):
             qprint(f"{i: 8d}. smoothed elbo ={float(-smoothed_objective):8.2f}")
-        if stop_heur.early_stop(-objective.data):
+        if stop_heur.early_stop(-objective.detach()):
             qprint("Stopping heuristic criterion satisfied")
             break
     else:
@@ -145,8 +144,10 @@ def mf_sgvb(
     u0 = torch.tensor(u0) if u0 is not None else torch.zeros(model.d)
     omega0 = torch.tensor(L0) if L0 is not None else torch.zeros(model.d)
 
-    u = torch.tensor(u0, requires_grad=True)
-    omega = torch.tensor(omega0, requires_grad=True)
+    u = torch.tensor(u0, requires_grad=True, dtype=model.dtype, device=model.device)
+    omega = torch.tensor(
+        omega0, requires_grad=True, dtype=model.dtype, device=model.device
+    )
 
     optimizer = (optimizer_type or Adadelta)([u, omega], **opt_params)
 
@@ -155,9 +156,7 @@ def mf_sgvb(
             print(s)
 
     qprint(
-        _header(
-            "Mean-field", optimizer, sim_entropy, stop_heur, model.name, num_draws, λ
-        )
+        _header("Mean-field", optimizer, sim_entropy, stop_heur, model, num_draws, λ)
     )
 
     def elbo_hat():
@@ -169,7 +168,8 @@ def mf_sgvb(
             # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
             q = Normal(loc=u.detach(), scale=torch.exp(omega.detach() / 2))
         for _ in range(num_draws):
-            ζ = u + torch.exp(omega / 2) * torch.randn((model.d,))  # reparam trick
+            ε = torch.randn((model.d,), device=model.device, dtype=model.dtype)
+            ζ = u + torch.exp(omega / 2) * ε  # reparam trick
             E_ln_joint += model.ln_joint(y, ζ) / num_draws
             if sim_entropy:
                 H_q_hat += q.log_prob(ζ).sum() / num_draws
@@ -246,11 +246,11 @@ def dual_sgvb(
     up0 = torch.tensor(up0) if up0 is not None else torch.zeros(model.pd)
     Lp0 = torch.tensor(Lp0) if Lp0 is not None else torch.eye(model.pd)
 
-    um = torch.tensor(um0, requires_grad=True)
-    Lm = torch.tensor(Lm0, requires_grad=True)
+    um = torch.tensor(um0, requires_grad=True, dtype=model.dtype, device=model.device)
+    Lm = torch.tensor(Lm0, requires_grad=True, dtype=model.dtype, device=model.device)
 
-    up = torch.tensor(up0, requires_grad=True)
-    Lp = torch.tensor(Lp0, requires_grad=True)
+    up = torch.tensor(up0, requires_grad=True, dtype=model.dtype, device=model.device)
+    Lp = torch.tensor(Lp0, requires_grad=True, dtype=model.dtype, device=model.device)
 
     model_opt_params = model_opt_params or {}
     proposal_opt_params = proposal_opt_params or {}
@@ -270,7 +270,7 @@ def dual_sgvb(
             model_optimizer,
             sim_entropy,
             stop_heur,
-            model.name,
+            model,
             num_draws,
             λ,
         )
@@ -286,8 +286,10 @@ def dual_sgvb(
             # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
             q = MultivariateNormal(loc=um.detach(), scale_tril=trL.detach())
         for _ in range(num_draws):
-            ζ = um + trL @ torch.randn((model.md,))  # reparam trick
-            η = up.detach() + Lp.detach() @ torch.randn((model.pd,))
+            εm = torch.randn((model.md,), device=model.device, dtype=model.dtype)
+            ζ = um + trL @ εm  # reparam trick
+            εp = torch.randn((model.pd,), device=model.device, dtype=model.dtype)
+            η = up.detach() + Lp.detach() @ εp  # reparam trick
             E_ln_joint += model.ln_joint(y, ζ, η) / num_draws
             if sim_entropy:
                 H_q_hat += q.log_prob(ζ) / num_draws
@@ -303,8 +305,10 @@ def dual_sgvb(
             # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
             q = MultivariateNormal(loc=up.detach(), scale_tril=trL.detach())
         for _ in range(num_draws):
-            ζ = um.detach() + Lm.detach() @ torch.randn((model.md,))
-            η = up + trL @ torch.randn((model.pd,))  # reparam trick
+            εm = torch.randn((model.md,), device=model.device, dtype=model.dtype)
+            ζ = um.detach() + Lm.detach() @ εm
+            εp = torch.randn((model.pd,), device=model.device, dtype=model.dtype)
+            η = up + trL @ εp  # reparam trick
             E_ln_joint += model.ln_joint(y, ζ, η) / num_draws
             if sim_entropy:
                 H_q_hat += q.log_prob(η) / num_draws
@@ -366,17 +370,16 @@ def dual_sgvb(
     return model.result_type(model=model, elbo_hats=model_elbo_hats, y=y, q=q)
 
 
-def _header(
-    inftype, optimizer, stochastic_entropy, stop_heur, model_name, num_draws, λ
-):
+def _header(inftype, optimizer, stochastic_entropy, stop_heur, model, num_draws, λ):
     if stochastic_entropy:
         title = f"{inftype} SGVB Inference"
     else:
         title = f"{inftype} ADVI"
     lines = [
         _DIVIDER,
-        f"{title}: {model_name}",
-        f"  - Estimating elbo with M={num_draws};",
+        f"{title}: {model.name}",
+        f"  - Using {model.dtype} precision on {model.device}",
+        f"  - Estimating elbo with M={num_draws}",
         f"  - {str(stop_heur)}",
         f"  - {type(optimizer).__name__} optimizer with param groups:",
     ]

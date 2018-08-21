@@ -1,7 +1,15 @@
 import torch
-from torch.distributions import LogNormal, Normal, Beta
+from torch.distributions import Normal
 
-from ptvi import FilteredStateSpaceModel, global_param, AR1Proposal, PFProposal
+from ptvi import (
+    FilteredStateSpaceModel,
+    global_param,
+    AR1Proposal,
+    PFProposal,
+    LogNormalPrior,
+    NormalPrior,
+    BetaPrior,
+)
 
 
 class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
@@ -18,22 +26,22 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
     """
 
     name = "Particle filtered stochastic volatility model"
-    a = global_param(prior=LogNormal(0, 1), transform="log", rename="α")
-    b = global_param(prior=Normal(0, 1))
-    c = global_param(prior=Beta(1, 1), transform="logit", rename="ψ")
-    d = global_param(prior=Normal(0, 1))
-    e = global_param(prior=Beta(1, 1), transform="logit", rename="ρ")
-    f = global_param(prior=LogNormal(0, 1), transform="log", rename="ι")
+    a = global_param(prior=LogNormalPrior(0, 1), transform="log", rename="α")
+    b = global_param(prior=NormalPrior(0, 1))
+    c = global_param(prior=BetaPrior(1, 1), transform="logit", rename="ψ")
+    d = global_param(prior=NormalPrior(0, 1))
+    e = global_param(prior=BetaPrior(1, 1), transform="logit", rename="ρ")
+    f = global_param(prior=LogNormalPrior(0, 1), transform="log", rename="ι")
 
     def simulate(self, a, b, c):
         """Simulate from p(x, z | θ)"""
         a, b, c = map(torch.tensor, (a, b, c))
-        z_true = torch.empty((self.input_length,))
-        z_true[0] = Normal(b, (1 - c ** 2) ** (-.5)).sample()
+        z = torch.empty((self.input_length,))
+        z[0] = Normal(b, (1 - c ** 2) ** (-.5)).sample()
         for t in range(1, self.input_length):
-            z_true[t] = b + c * z_true[t - 1] + Normal(0, 1).sample()
-        x = Normal(0, torch.exp(a) * torch.exp(z_true / 2)).sample()
-        return x, z_true
+            z[t] = b + c * z[t - 1] + Normal(0, 1).sample()
+        x = Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
+        return x.type(self.dtype).to(self.device), z.type(self.dtype).to(self.device)
 
     def conditional_log_prob(self, t, y, z, ζ):
         """Compute log p(x_t, z_t | y_{0:t-1}, z_{0:t-1}, ζ).

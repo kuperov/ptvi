@@ -1,18 +1,26 @@
 import torch
 from torch.distributions import Normal, LogNormal, Beta
-from ptvi import Model, global_param, InvGamma
+from ptvi import (
+    Model,
+    global_param,
+    InvGamma,
+    NormalPrior,
+    LogNormalPrior,
+    BetaPrior,
+    InvGammaPrior,
+)
 
 
 class FilteredLocalLevelModel(Model):
     """Local level (linear gaussian) model that exploits the Kalman filter."""
 
     name = "Filtered local level model"
-    z0 = global_param(prior=Normal(0, 10))
-    σz0 = global_param(prior=LogNormal(1, 1), transform="log", rename="ςz0")
-    γ = global_param(prior=Normal(1, 3))
-    η = global_param(prior=LogNormal(0, 1), transform="log", rename="ψ")
-    σ = global_param(prior=InvGamma(1, 5), transform="log", rename="ς")
-    ρ = global_param(prior=Beta(1, 1), transform="logit", rename="φ")
+    z0 = global_param(prior=NormalPrior(0, 10))
+    σz0 = global_param(prior=LogNormalPrior(1, 1), transform="log", rename="ςz0")
+    γ = global_param(prior=NormalPrior(1, 3))
+    η = global_param(prior=LogNormalPrior(0, 1), transform="log", rename="ψ")
+    σ = global_param(prior=InvGammaPrior(1, 5), transform="log", rename="ς")
+    ρ = global_param(prior=BetaPrior(1, 1), transform="logit", rename="φ")
 
     def ln_joint(self, y, ζ):
         """Computes the log likelihood plus the log prior at ζ."""

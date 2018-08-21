@@ -8,7 +8,7 @@ from torch.distributions import (
     ExpTransform,
     AffineTransform,
 )
-from ptvi.dist import Improper
+from ptvi.priors import Prior, ImproperPrior
 
 
 class ModelParameter(object):
@@ -25,7 +25,7 @@ class ModelParameter(object):
     index = -1
     dimension = 1
 
-    def __init__(self, name: str, prior: Distribution):
+    def __init__(self, name: str, prior: Prior):
         self.name, self.prior = name, prior
 
     def inferred_name(self, name):
@@ -40,6 +40,9 @@ class ModelParameter(object):
     @property
     def post_marg_name(self):
         return "{}_post_marg".format(self.name)
+
+    def get_prior_distribution(self, dtype, device):
+        return self.prior.to_distribution(dtype=dtype, device=device)
 
     def __str__(self):
         return f"{self.name} with prior {self.prior}"
@@ -62,7 +65,7 @@ class TransformedModelParameter(ModelParameter):
     def __init__(
         self,
         name: str,
-        prior: Distribution,
+        prior: Prior,
         transformed_name: str,
         transform: Transform,
         transform_desc: str = None,
@@ -106,7 +109,7 @@ class LocalParameter(ModelParameter):
     For now local parameters are assumed not transformable and dimension 1.
     """
 
-    def __init__(self, name: str, prior: Distribution):
+    def __init__(self, name: str, prior: Prior):
         super().__init__(name, prior)
 
     def __str__(self):
@@ -114,7 +117,7 @@ class LocalParameter(ModelParameter):
 
 
 def global_param(
-    prior: Distribution = None,
+    prior: Prior = None,
     name: str = None,
     transform: Union[Transform, str] = None,
     rename: str = None,
@@ -129,7 +132,7 @@ def global_param(
         rename: optional, name of parameter in unconstrained space
     """
     if prior is None:
-        prior = Improper()
+        prior = ImproperPrior()
     if rename is not None and transform is None:
         raise Exception("rename requires a transform")
     if transform is None:
@@ -178,5 +181,5 @@ def local_param(prior: Distribution = None, name: str = None):
         name: optional, name for parameter
     """
     if prior is None:
-        prior = Improper()
+        prior = ImproperPrior()
     return LocalParameter(name=name, prior=prior)

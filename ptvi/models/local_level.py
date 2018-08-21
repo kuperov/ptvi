@@ -1,17 +1,24 @@
 import torch
-from torch.distributions import Normal, LogNormal, Beta
-from ptvi.dist import InvGamma
-from ptvi import Model, local_param, global_param
+from torch.distributions import Normal
+from ptvi import (
+    Model,
+    local_param,
+    global_param,
+    NormalPrior,
+    LogNormalPrior,
+    BetaPrior,
+    InvGammaPrior,
+)
 
 
 class LocalLevelModel(Model):
 
     name = "Local level model"
     z = local_param()
-    γ = global_param(prior=Normal(1, 3))
-    η = global_param(prior=LogNormal(0, 3), transform="log", rename="ψ")
-    σ = global_param(prior=InvGamma(1, 5), transform="log", rename="ς")
-    ρ = global_param(prior=Beta(2, 2), transform="logit", rename="φ")
+    γ = global_param(prior=NormalPrior(1, 3))
+    η = global_param(prior=LogNormalPrior(0, 3), transform="log", rename="ψ")
+    σ = global_param(prior=InvGammaPrior(1, 5), transform="log", rename="ς")
+    ρ = global_param(prior=BetaPrior(2, 2), transform="logit", rename="φ")
 
     def ln_joint(self, y, ζ):
         """Computes the log likelihood plus the log prior at ζ."""
@@ -36,7 +43,7 @@ class LocalLevelModel(Model):
         for i in range(1, self.input_length):
             z[i] = ρ * z[i - 1] + Normal(0, 1).sample()
         y = Normal(γ + η * z, σ).sample()
-        return y, z
+        return y.type(self.dtype).to(self.device), z.type(self.dtype).to(self.device)
 
     def sample_observed(self, ζ, y, fc_steps=0):
         z, γ, (η, ψ), (σ, ς), (ρ, φ) = self.unpack(ζ)

@@ -1,7 +1,15 @@
 import torch
 from torch.distributions import LogNormal, Normal, Beta
 
-from ptvi import FilteredStateSpaceModel, global_param, AR1Proposal, PFProposal
+from ptvi import (
+    FilteredStateSpaceModel,
+    global_param,
+    AR1Proposal,
+    PFProposal,
+    LogNormalPrior,
+    NormalPrior,
+    BetaPrior,
+)
 
 
 class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
@@ -13,9 +21,9 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
     """
 
     name = "Particle filtered stochastic volatility model"
-    a = global_param(prior=LogNormal(0, 1), transform="log", rename="α")
-    b = global_param(prior=Normal(0, 1))
-    c = global_param(prior=Beta(1, 1), transform="logit", rename="ψ")
+    a = global_param(prior=LogNormalPrior(0, 1), transform="log", rename="α")
+    b = global_param(prior=NormalPrior(0, 1))
+    c = global_param(prior=BetaPrior(1, 1), transform="logit", rename="ψ")
 
     def simulate(self, a, b, c):
         """Simulate from p(x, z | θ)"""
@@ -25,7 +33,7 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
         for t in range(1, self.input_length):
             z_true[t] = b + c * z_true[t - 1] + Normal(0, 1).sample()
         x = Normal(0, torch.exp(a) * torch.exp(z_true / 2)).sample()
-        return x, z_true
+        return x.type(self.dtype), z_true.type(self.dtype)
 
     def conditional_log_prob(self, t, y, z, ζ):
         """Compute log p(x_t, z_t | y_{0:t-1}, z_{0:t-1}, ζ).

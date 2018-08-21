@@ -1,9 +1,11 @@
+"""Test 'fivo' model for particle filtering state-space models.
+"""
+
 from unittest.mock import patch
 
 import tests.test_util
 from torch.distributions import Gumbel, StudentT
 
-from ptvi.algos.fivo import *
 from ptvi import *
 from ptvi.models.filtered_sv_model import *
 
@@ -20,19 +22,14 @@ class TestFIVO(tests.test_util.TorchTestCase):
         self.assertIsInstance(lj, torch.Tensor)
         # check we can do sgvb
         fit = sgvb(model, y, quiet=True, max_iters=8)
-        self.assertIsInstance(fit, SGVBResult)
+        self.assertIsNotNone(fit)
 
     def test_proposal(self):
-        ar1norm = AR1Proposal(ρ=0.9)
-        self.assertIn("ε_t ~ Normal(loc=0.00, scale=1.00)", repr(ar1norm))
-        ar1student = AR1Proposal(ρ=0.9, μ=0.5, ε_type=StudentT, df=3)
-        Z = torch.empty((100, 50))
-        Z[0, :] = ar1student.conditional_sample(0, Z)
-        Z[1, :] = ar1student.conditional_sample(1, Z)
-        ar1g = AR1Proposal(ρ=0.9, μ=10., ε_type=Gumbel)
+        ar1norm = AR1Proposal(μ=0, σ=1, ρ=0.9)
+        self.assertIn("η_t ~ Ν(0,1.00)", repr(ar1norm))
         Z = torch.empty((10, 12))
-        Z[0, :] = ar1g.conditional_sample(0, Z)
-        Z[1, :] = ar1g.conditional_sample(1, Z)
+        Z[0, :] = ar1norm.conditional_sample(0, Z, 12)
+        Z[1, :] = ar1norm.conditional_sample(1, Z, 12)
 
     def test_samples(self):
         torch.manual_seed(123)
@@ -54,10 +51,31 @@ class TestFIVO(tests.test_util.TorchTestCase):
         T = 200
         model = FilteredStochasticVolatilityModel(input_length=T, num_particles=5)
         params = dict(a=1., b=0., c=.95)
-        y, z_true = model.simulate(a=1., b=0., c=.95)
+        y, z_true = model.simulate(**params)
 
         ζ = torch.tensor(list(params.values()), requires_grad=True)
         ghat = torch.zeros((3,))
+        reps = 5
+        for i in range(reps):
+            if ζ.grad is not None:
+                ζ.grad.zero_()
+            phatN = model.simulate_log_phatN(y, ζ)
+            phatN.backward()
+            ghat += ζ.grad
+        ghat /= reps
+        self.assertFalse(any(torch.isnan(ghat)))
+
+    def test_double_precision_gradient(self):
+        torch.manual_seed(123)
+        T = 200
+        model = FilteredStochasticVolatilityModel(
+            input_length=T, num_particles=5, dtype=torch.float64
+        )
+        params = dict(a=1., b=0., c=.95)
+        y, z_true = model.simulate(**params)
+
+        ζ = torch.tensor(list(params.values()), requires_grad=True, dtype=torch.float64)
+        ghat = torch.zeros((3,), dtype=torch.float64)
         reps = 5
         for i in range(reps):
             if ζ.grad is not None:

@@ -1,3 +1,4 @@
+from warnings import warn
 import torch
 from torch.distributions import LogNormal, Normal, StudentT
 from unittest.mock import patch
@@ -7,6 +8,12 @@ from ptvi.models import *
 from ptvi.algos.map import MAPResult
 
 from tests.test_util import TorchTestCase
+
+if torch.cuda.is_available():
+    cuda = torch.device("cuda")
+else:
+    cuda = torch.device("cpu")
+    warn("CUDA not available. Running CUDA tests under CPU instead.")
 
 
 class TestGaussian(TorchTestCase):
@@ -37,6 +44,28 @@ class TestGaussian(TorchTestCase):
         )
         self.assertIsInstance(fit, MVNPosterior)
 
+    def test_smoke_test_sgvb_float64_cpu(self):
+        model = UnivariateGaussian(dtype=torch.float64)
+        torch.manual_seed(123)
+        N, μ0, σ0 = 100, 5., 5.
+        y = model.simulate(N=N, μ=μ0, σ=σ0)
+        self.assertEqual(y.dtype, torch.float64)
+        fit = sgvb(
+            model, y, max_iters=2 ** 4, num_draws=1, sim_entropy=True, quiet=True
+        )
+        self.assertIsInstance(fit, MVNPosterior)
+
+    def test_smoke_test_sgvb_gpu_if_available(self):
+        model = UnivariateGaussian(device=cuda)
+        torch.manual_seed(123)
+        N, μ0, σ0 = 100, 5., 5.
+        y = model.simulate(N=N, μ=μ0, σ=σ0)
+        self.assertEqual(y.device.type, cuda.type)
+        fit = sgvb(
+            model, y, max_iters=2 ** 4, num_draws=1, sim_entropy=True, quiet=True
+        )
+        self.assertIsInstance(fit, MVNPosterior)
+
     def test_plots(self):
         torch.manual_seed(123)
         m = UnivariateGaussian()
@@ -56,6 +85,19 @@ class TestLocalLevel(TorchTestCase):
         y, z = m.simulate(γ=0., η=2., σ=1.5, ρ=0.85)
         self.assertEqual(20, len(y))
         self.assertEqual(20, len(z))
+        fit = sgvb(m, y, max_iters=8, quiet=True)
+        self.assertIsInstance(fit, MVNPosterior)
+
+    def test_training_loop_double_gpu(self):
+        torch.manual_seed(123)
+        m = LocalLevelModel(input_length=20, dtype=torch.float64, device=cuda)
+        y, z = m.simulate(γ=0., η=2., σ=1.5, ρ=0.85)
+        self.assertEqual(20, len(y))
+        self.assertEqual(y.device.type, cuda.type)
+        self.assertEqual(y.dtype, torch.float64)
+        self.assertEqual(20, len(z))
+        self.assertEqual(z.device.type, cuda.type)
+        self.assertEqual(z.dtype, torch.float64)
         fit = sgvb(m, y, max_iters=8, quiet=True)
         self.assertIsInstance(fit, MVNPosterior)
 
@@ -131,27 +173,70 @@ class TestFilteredLocalLevelModel(TorchTestCase):
 
 
 class TestAR2(TorchTestCase):
-    def setUp(self):
+    def test_sgvb(self):
         μ, ρ1, ρ2, σ = 1.5, 0.2, 0.1, 1.5
         torch.manual_seed(123)
         params = dict(μ=μ, ρ1=ρ1, ρ2=ρ2, σ=σ)
-        self.model = AR2(input_length=100)
-        self.y = self.model.simulate(**params)
+        model = AR2(input_length=100)
+        y = model.simulate(**params)
+        fit = sgvb(model, y, max_iters=200, quiet=True)
+        summ = fit.summary()
 
-    def test_sgvb(self):
-        fit = sgvb(self.model, self.y, max_iters=200, quiet=True)
+    def test_sgvb_gpu_double(self):
+        μ, ρ1, ρ2, σ = 1.5, 0.2, 0.1, 1.5
+        torch.manual_seed(123)
+        params = dict(μ=μ, ρ1=ρ1, ρ2=ρ2, σ=σ)
+        model = AR2(input_length=100, dtype=torch.float64, device=cuda)
+        y = model.simulate(**params)
+        self.assertEqual(y.dtype, torch.float64)
+        self.assertEqual(y.device.type, cuda.type)
+        fit = sgvb(model, y, max_iters=10, quiet=True)
         summ = fit.summary()
 
     def test_map(self):
-        fit = map(self.model, self.y, quiet=True)
+        μ, ρ1, ρ2, σ = 1.5, 0.2, 0.1, 1.5
+        torch.manual_seed(123)
+        params = dict(μ=μ, ρ1=ρ1, ρ2=ρ2, σ=σ)
+        model = AR2(input_length=100)
+        y = model.simulate(**params)
+        fit = map(model, y, quiet=True)
+        summ = fit.summary()
+
+    def test_map_gpu_double(self):
+        μ, ρ1, ρ2, σ = 1.5, 0.2, 0.1, 1.5
+        torch.manual_seed(123)
+        params = dict(μ=μ, ρ1=ρ1, ρ2=ρ2, σ=σ)
+        model = AR2(input_length=100, dtype=torch.float64, device=cuda)
+        y = model.simulate(**params)
+        fit = map(model, y, quiet=True)
         summ = fit.summary()
 
     def test_plots_and_forecasts(self):
-        fit = sgvb(self.model, self.y, max_iters=200, quiet=True)
+        μ, ρ1, ρ2, σ = 1.5, 0.2, 0.1, 1.5
+        torch.manual_seed(123)
+        params = dict(μ=μ, ρ1=ρ1, ρ2=ρ2, σ=σ)
+        model = AR2(input_length=20)
+        y = model.simulate(**params)
+        fit = sgvb(model, y, max_iters=10, quiet=True)
 
         patch("ptvi.model.plt.show", fit.plot_sample_paths())
         patch("ptvi.model.plt.show", fit.plot_sample_paths(fc_steps=2))
-        patch("ptvi.model.plt.show", fit.plot_pred_ci(fc_steps=2, true_y=self.y))
+        patch("ptvi.model.plt.show", fit.plot_pred_ci(fc_steps=2, true_y=y))
+        patch("ptvi.model.plt.show", fit.plot_marg_post("σ"))
+        patch("ptvi.model.plt.show", fit.plot_data())
+        patch("ptvi.model.plt.show", fit.plot_elbos())
+
+    def test_plots_and_forecasts_gpu(self):
+        μ, ρ1, ρ2, σ = 1.5, 0.2, 0.1, 1.5
+        torch.manual_seed(123)
+        params = dict(μ=μ, ρ1=ρ1, ρ2=ρ2, σ=σ)
+        model = AR2(input_length=20, dtype=torch.float64, device=cuda)
+        y = model.simulate(**params)
+        fit = sgvb(model, y, max_iters=10, quiet=True)
+
+        patch("ptvi.model.plt.show", fit.plot_sample_paths())
+        patch("ptvi.model.plt.show", fit.plot_sample_paths(fc_steps=2))
+        patch("ptvi.model.plt.show", fit.plot_pred_ci(fc_steps=2, true_y=y))
         patch("ptvi.model.plt.show", fit.plot_marg_post("σ"))
         patch("ptvi.model.plt.show", fit.plot_data())
         patch("ptvi.model.plt.show", fit.plot_elbos())

@@ -1,7 +1,14 @@
 import torch
-from torch.distributions import LogNormal, Normal, Beta
+from torch.distributions import Normal
 
-from ptvi import FilteredStateSpaceModel, global_param, AR1Proposal, PFProposal
+from ptvi import (
+    FilteredStateSpaceModel,
+    global_param,
+    AR1Proposal,
+    PFProposal,
+    NormalPrior,
+    BetaPrior,
+)
 
 
 class FilteredStochasticVolatilityModelFixedParams(FilteredStateSpaceModel):
@@ -13,8 +20,8 @@ class FilteredStochasticVolatilityModelFixedParams(FilteredStateSpaceModel):
     """
 
     name = "Particle filtered stochastic volatility model"
-    d = global_param(prior=Normal(0, 1))
-    e = global_param(prior=Beta(1, 1), transform="logit", rename="ρ")
+    d = global_param(prior=NormalPrior(0, 1))
+    e = global_param(prior=BetaPrior(1, 1), transform="logit", rename="ρ")
 
     def __init__(self, input_length, num_particles, resample):
         self.a, self.b, self.c = map(torch.tensor, (0.5, 1., 0.95))

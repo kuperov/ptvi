@@ -12,7 +12,7 @@ def plot_dens(dists, a, b):
         if isinstance(p, Distribution):
             ys = torch.exp(p.log_prob(xs))
             ys[torch.isnan(ys)] = 0
-            plt.plot(xs.numpy(), ys.numpy(), label=label)
+            plt.plot(xs.cpu().numpy(), ys.cpu().numpy(), label=label)
         elif isinstance(p, Number):
             plt.axvline(p, linestyle="--", label=label)
 

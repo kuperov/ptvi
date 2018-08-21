@@ -68,16 +68,14 @@ class MVNPosterior(object):
                         paths[i, _τ:] = self.model.forecast(
                             ζ, self.y, fc_steps=fc_steps
                         )
-            except:
+            except Exception as e:
                 # the ζ we sampled blew stuff up - drop this observation
                 dropped += 1
+                if dropped > 20:
+                    # prevent infinite loop, since N is finite.
+                    raise e
                 continue
             i += 1
-            if 20 < i < dropped:
-                # prevent infinite loop, since N is finite.
-                raise Exception(
-                    f"Iteration {i}/{N}: stopping at {dropped} dropped simulations."
-                )
         return paths
 
     def sample_latent_paths(self, N=100, fc_steps=0):
@@ -133,14 +131,14 @@ class MVNPosterior(object):
         if not isinstance(axes, collections.Iterable):
             axes = [axes]
         for ax, p in zip(axes, locals):
-            zs = self.q.mean[p.index : p.index + p.dimension].numpy()
-            xs = torch.arange(len(zs)).numpy()
+            zs = self.q.mean[p.index : p.index + p.dimension].cpu().numpy()
+            xs = torch.arange(len(zs)).cpu().numpy()
             vars = self.q.variance[p.index : p.index + p.dimension]
-            sds = torch.sqrt(vars).numpy()
+            sds = torch.sqrt(vars).cpu().numpy()
             if p.name in true_vals:
                 true = true_vals[p.name]
                 if hasattr(true, "numpy"):
-                    true = true.numpy()
+                    true = true.cpu().numpy()
                 plt.plot(xs, true, label=p.name)
             plt.plot(xs, zs, label=f"$E[{p.name} | data]$")
             plt.fill_between(
@@ -151,7 +149,7 @@ class MVNPosterior(object):
         plt.tight_layout()
 
     def plot_data(self):
-        plt.plot(self.y.numpy(), label="data")
+        plt.plot(self.y.cpu().numpy(), label="data")
         plt.title("Data")
 
     def plot_marg_post(
@@ -167,12 +165,19 @@ class MVNPosterior(object):
         a, b = min(variates), max(variates)
         if true_val:
             a, b = min(a, true_val), max(b, true_val)
-        xs = torch.linspace(a - (b - a) / 4., b + (b - a) / 4., 500)
+        xs = torch.linspace(
+            a - (b - a) / 4.,
+            b + (b - a) / 4.,
+            500,
+            device=self.model.device,
+            dtype=self.model.dtype,
+        )
+        xs_np = xs.cpu().numpy()
 
         def plotpdf(p, label=""):
             ys = torch.exp(p.log_prob(xs))
             ys[torch.isnan(ys)] = 0
-            plt.plot(xs.numpy(), ys.numpy(), label=label)
+            plt.plot(xs_np, ys.cpu().numpy(), label=label)
 
         if plot_prior:
             plotpdf(prior, label=f"$p({variable}{suffix})$")
@@ -199,14 +204,14 @@ class MVNPosterior(object):
         paths = self.sample_paths(N, fc_steps=fc_steps)
         xs, fxs = range(self.input_length), range(self.input_length + fc_steps)
         for i in range(N):
-            plt.plot(fxs, paths[i, :].numpy(), linewidth=0.5, alpha=0.5)
+            plt.plot(fxs, paths[i, :].cpu().numpy(), linewidth=0.5, alpha=0.5)
         if fc_steps > 0:
             plt.axvline(x=self.input_length, color="black")
             plt.title(f"{N} posterior samples and {fc_steps}-step forecast")
         else:
             plt.title(f"{N} posterior samples")
         if true_y is not None:
-            plt.plot(xs, true_y.numpy(), color="black", linewidth=2, label="y")
+            plt.plot(xs, true_y.cpu().numpy(), color="black", linewidth=2, label="y")
             plt.legend()
 
     def plot_pred_ci(
@@ -222,7 +227,7 @@ class MVNPosterior(object):
             fxs, ci_bands[:, 0], ci_bands[:, 1], alpha=0.5, label=f"{(1-α)*100:.0f}% CI"
         )
         if true_y is not None:
-            plt.plot(xs, true_y.numpy(), color="black", linewidth=2, label="y")
+            plt.plot(xs, true_y.cpu().numpy(), color="black", linewidth=2, label="y")
             plt.legend()
         if fc_steps > 0:
             plt.axvline(x=self.input_length, color="black")

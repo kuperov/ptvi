@@ -35,9 +35,9 @@ def stoch_opt(
 
     opt_type = opt_type or torch.optim.Adam
     if ζ0 is not None:
-        ζ = torch.tensor(ζ0, requires_grad=True)
+        ζ = torch.tensor(ζ0, requires_grad=True, dtype=model.dtype, device=model.device)
     else:
-        ζ = torch.zeros(model.d, requires_grad=True)
+        ζ = torch.zeros(model.d, requires_grad=True, dtype=model.dtype, device=model.device)
     optimizer = opt_type([ζ], **kwargs)
     stop_heur = stop_heur or SupGrowthStoppingHeuristic()
 
@@ -80,6 +80,7 @@ def _header(optimizer, stop_heur, model, λ):
         _DIVIDER,
         f"Stochastic optimization for {model.name}",
         f"  - Searching for point estimates only",
+        f"  - Using {model.dtype} precision on {model.device}",
         f"  - {str(stop_heur)}",
         f"  - {type(optimizer).__name__} optimizer with param groups:",
     ]
@@ -113,9 +114,9 @@ class StochOptResult(object):
             names.append(p.name)
             if isinstance(p, TransformedModelParameter):
                 t = p.transform.inv
-                estimates.append(float(t(self.ζ[index: index + p.dimension])))
+                estimates.append(float(t(self.ζ[index : index + p.dimension])))
             else:
-                estimates.append(float(self.ζ[index: index + p.dimension]))
+                estimates.append(float(self.ζ[index : index + p.dimension]))
             index += p.dimension
         cols = {"estimate": estimates}
         if true is not None:

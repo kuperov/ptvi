@@ -1,5 +1,5 @@
 from torch.distributions import Normal, LogNormal
-from ptvi import Model, global_param
+from ptvi import Model, global_param, NormalPrior, LogNormalPrior
 
 
 class UnivariateGaussian(Model):
@@ -9,12 +9,12 @@ class UnivariateGaussian(Model):
     """
 
     name = "Univariate Gaussian model"
-    μ = global_param(prior=Normal(0., 10.))
-    σ = global_param(prior=LogNormal(0., 10.), rename="η", transform="log")
+    μ = global_param(prior=NormalPrior(0., 10.))
+    σ = global_param(prior=LogNormalPrior(0., 10.), rename="η", transform="log")
 
     def simulate(self, N: int, μ: float, σ: float):
         assert N > 2 and σ > 0
-        return Normal(μ, σ).sample((N,))
+        return Normal(μ, σ).sample((N,)).type(self.dtype).to(self.device)
 
     def ln_joint(self, y, ζ):
         μ, (σ, η) = self.unpack(ζ)

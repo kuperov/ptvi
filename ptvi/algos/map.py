@@ -26,9 +26,11 @@ def map(
 
     qprint(f"{_DIVIDER}\nMAP inference with L-BFGS: {model.name}\n{_DIVIDER}")
     if ζ0 is not None:
-        ζ = torch.tensor(ζ0, requires_grad=True)
+        ζ = torch.tensor(ζ0, requires_grad=True, dtype=model.dtype, device=model.device)
     else:
-        ζ = torch.zeros(model.d, requires_grad=True)
+        ζ = torch.zeros(
+            model.d, requires_grad=True, dtype=model.dtype, device=model.device
+        )
     optimizer = torch.optim.LBFGS([ζ], **kwargs)
     last_loss, t, losses = None, -time(), []
     for i in range(max_iters):
@@ -66,7 +68,9 @@ class MAPResult(MVNPosterior):
 
     # https://discuss.pytorch.org/t/compute-the-hessian-matrix-of-a-network/15270#post_3
     def ln_joint_grad_hessian(self):
-        z = torch.tensor(self.ζ, requires_grad=True)
+        z = torch.tensor(
+            self.ζ, requires_grad=True, dtype=self.model.dtype, device=self.model.device
+        )
         lj = self.model.ln_joint(self.y, z)
         grad = torch.autograd.grad(lj, z, create_graph=True)
         cnt = 0
@@ -78,7 +82,7 @@ class MAPResult(MVNPosterior):
             )
             cnt = 1
         l = g_vector.size(0)
-        hessian = torch.zeros(l, l)
+        hessian = torch.zeros((l, l), dtype=self.model.dtype, device=self.model.device)
         for idx in range(l):
             grad2rd = torch.autograd.grad(g_vector[idx], z, create_graph=True)
             cnt = 0
@@ -96,7 +100,11 @@ class MAPResult(MVNPosterior):
         """Hacky initial conditions. MAP for initial guess, block-diagonal
         covariance function.
         """
-        mask = torch.zeros((self.model.d, self.model.d))
+        mask = torch.zeros(
+            (self.model.d, self.model.d),
+            dtype=self.model.dtype,
+            device=self.model.device,
+        )
         index = 0
         for p in self.model.params:
             mask[index : index + p.dimension, index : index + p.dimension] = 1

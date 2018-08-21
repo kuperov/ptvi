@@ -23,8 +23,19 @@ class Model(object):
     has_observation_error = True  # true if outcome is imperfectly observed
     result_type = MVNPosterior
 
-    def __init__(self, input_length=None):
+    def __init__(self, input_length=None, dtype=None, device=None):
+        """
+        Construct a model.
+
+        Args:
+            input_length: data input size this model should expect. Especially useful
+                          for time series models.
+            dtype:        data type (default: torch.float32)
+            device:       compute device (default: cpu)
+        """
         self.input_length = input_length
+        self.dtype = dtype or torch.float32
+        self.device = device or torch.device("cpu")
 
         self.params: List[ModelParameter] = []
         for attr, a in type(self).__dict__.items():
@@ -37,8 +48,8 @@ class Model(object):
         self.d = 0
         for p in self.params:
             p.index = index
-            prior_name = f"{p.name}_prior"  # e.g. self.σ_prior()
-            setattr(self, prior_name, p.prior)
+            prior = p.get_prior_distribution(dtype=self.dtype, device=self.device)
+            setattr(self, f"{p.name}_prior", prior)  # e.g. self.σ_prior()
 
             if isinstance(p, LocalParameter):
                 if input_length is None:
@@ -48,7 +59,7 @@ class Model(object):
                 tfm_name = f"{p.name}_to_{p.transformed_name}"
                 setattr(self, tfm_name, p.transform)  # e.g. self.σ_to_φ()
                 tfm_prior_name = f"{p.transformed_name}_prior"
-                tfm_prior = TransformedDistribution(p.prior, p.transform)
+                tfm_prior = TransformedDistribution(prior, p.transform)
                 setattr(self, tfm_prior_name, tfm_prior)  # e.g. self.φ_prior()
             index += p.dimension
             self.d += p.dimension
@@ -163,6 +174,9 @@ class Model(object):
         """
         raise NotImplementedError
 
+    def tabulate_priors(self):
+        return ["{p.name} ~ {str(p.prior)}" for p in self.params]
+
     def __str__(self):
         return self.name
 
@@ -196,7 +210,7 @@ class FilteredStateSpaceModel(Model):
                 label=f"{(1 - α)*100:.0f}% CI",
             )
             if true_z is not None:
-                plt.plot(xs, true_z.numpy(), color="black", linewidth=2, label="z")
+                plt.plot(xs, true_z.cpu().numpy(), color="black", linewidth=2, label="z")
                 plt.legend()
             if fc_steps > 0:
                 plt.axvline(x=self.input_length, color="black")
@@ -209,10 +223,17 @@ class FilteredStateSpaceModel(Model):
 
     result_type = FIVOResult
 
-    def __init__(self, input_length: int, num_particles: int = 50, resample=True):
+    def __init__(
+        self,
+        input_length: int,
+        num_particles: int = 50,
+        resample=True,
+        dtype: torch.dtype = None,
+        device: torch.device = None,
+    ):
         self.num_particles = num_particles
         self.resample = resample
-        super().__init__(input_length)
+        super().__init__(input_length=input_length, dtype=dtype, device=device)
 
     def simulate(self, *args, **kwargs):
         """Simulate from p(x_{1:T} | θ)."""
@@ -245,7 +266,9 @@ class FilteredStateSpaceModel(Model):
         """Apply particle filter to estimate marginal likelihood log p^(y | ζ)"""
         log_phatN = 0.
         log_N = math.log(self.num_particles)
-        log_w = torch.full((self.num_particles,), -log_N)
+        log_w = torch.full(
+            (self.num_particles,), -log_N, dtype=self.dtype, device=self.device
+        )
         Z = None
         proposal = self.proposal_for(y, ζ)
         for t in range(self.input_length):
@@ -262,7 +285,12 @@ class FilteredStateSpaceModel(Model):
                 if self.resample and ESS < self.num_particles:
                     a = Categorical(torch.exp(log_w)).sample((self.num_particles,))
                     Z = (Z[:, a]).clone()
-                    log_w = torch.full((self.num_particles,), -log_N)
+                    log_w = torch.full(
+                        (self.num_particles,),
+                        -log_N,
+                        dtype=self.dtype,
+                        device=self.device,
+                    )
         if sample is not None:
             with torch.no_grad():
                 # samples should be M * T, where M is the number of samples

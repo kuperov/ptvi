@@ -1,11 +1,14 @@
 import math
 import torch
-from torch.distributions import LogNormal, Normal, Beta, Categorical
+from torch.distributions import Normal, Categorical
 from ptvi import (
     FilteredStateSpaceModelFreeProposal,
     global_param,
     AR1Proposal,
     PFProposal,
+    LogNormalPrior,
+    NormalPrior,
+    BetaPrior,
 )
 
 
@@ -27,11 +30,11 @@ class FilteredSVModelDualOpt(FilteredStateSpaceModelFreeProposal):
     """
 
     name = "Particle filtered stochastic volatility model"
-    a = global_param(prior=LogNormal(0, 1), transform="log", rename="α")
-    b = global_param(prior=Normal(0, 1))
-    c = global_param(prior=Beta(1, 1), transform="logit", rename="ψ")
-    d = global_param(prior=Normal(0, 1))
-    e = global_param(prior=Beta(1, 1), transform="logit", rename="ρ")
+    a = global_param(prior=LogNormalPrior(0, 1), transform="log", rename="α")
+    b = global_param(prior=NormalPrior(0, 1))
+    c = global_param(prior=BetaPrior(1, 1), transform="logit", rename="ψ")
+    d = global_param(prior=NormalPrior(0, 1))
+    e = global_param(prior=BetaPrior(1, 1), transform="logit", rename="ρ")
 
     def __init__(self, input_length: int, num_particles: int = 50, resample=True):
         super().__init__(input_length, num_particles, resample)
