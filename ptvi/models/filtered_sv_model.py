@@ -1,4 +1,5 @@
 import torch
+import click
 from torch.distributions import Normal, Categorical
 
 from ptvi import (
@@ -431,3 +432,87 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
             f"\tz_1 = d + f/√(1 - e^2) η_1\n"
             f"\twhere η_t ~ Ν(0,1)\n"
         )
+
+
+@click.command("sim-filtered-sv-model")
+@click.argument("t")  # , help='Input length to simulate')
+@click.option("--a", default=1., help="True a parameter value")
+@click.option("--b", default=0., help="True b parameter value")
+@click.option("--c", default=.95, help="True c parameter value")
+@click.option("--particles", default=10000, help="Number of particles")
+@click.option("--double/--single", default=True, help="Use double or single precision")
+@click.option("--gpu/--cpu", default=True, help="Use GPU (if available) or CPU")
+@click.option("--maxiter", default=2 ** 12, help="Maximum iterations for optimization")
+@click.option("--stopping", default='sup', help="Stopping rule: null/exp/sup")
+@click.option("--dataseed", default=123, help="Seed for generating data")
+@click.option("--algoseed", default=123, help="Seed for running algorithm")
+@click.option("--fileprefix", default="sv-sim", help="File prefix for plots and output")
+def sim(t, a, b, c, particles, double, gpu, maxiter, stopping, dataseed, algoseed, fileprefix):
+    """This script simulates T observations from a filtered stochastic volatility model
+    and attempts to fit the model using VI."""
+    import matplotlib.pyplot as plt
+    import ptvi
+    from time import time
+
+    starttime = time()
+
+    T = int(t)
+
+    dtype = torch.float64 if double else torch.float32
+    use_device = "cuda" if torch.cuda.is_available() and gpu else "cpu"
+    device = torch.device(use_device)
+    click.echo(f"Using {dtype} arithmetic on {use_device}.")
+
+    params = dict(a=a, b=b, c=c)
+    click.echo(f"True parameters: a={a}, b={b}, c={c}")
+
+    click.echo(f"Writing plots to {fileprefix}-*.pdf")
+
+    model = FilteredStochasticVolatilityModelFreeProposal(
+        input_length=T,
+        num_particles=particles,
+        resample=True,
+        dtype=dtype,
+        device=device,
+    )
+    click.echo(repr(model))
+
+    torch.manual_seed(dataseed)
+    y, z_true = model.simulate(**params)
+
+    plt.subplot(211)
+    plt.plot(y.cpu().numpy(), label="y")
+    plt.title("Simulated observed data")
+    plt.legend()
+    plt.subplot(212)
+    plt.plot(z_true.cpu().numpy(), label="true z")
+    plt.legend()
+    plt.title("Simulated log volatility")
+    plt.tight_layout()
+    plt.savefig(f"{fileprefix}-data.pdf", papertype="a4r")
+
+    torch.manual_seed(algoseed)
+    trace = ptvi.PointEstimateTracer(model)
+
+    stopping_type = {'null': ptvi.NullStoppingHeuristic, 'exp': ptvi.ExponentialStoppingHeuristic,
+                     'sup': ptvi.SupGrowthStoppingHeuristic}[stopping]
+
+    fit = ptvi.stoch_opt(
+        model,
+        y,
+        opt_type=torch.optim.Adamax,
+        tracer=trace,
+        stop_heur=stopping_type(),
+        max_iters=maxiter,
+    )
+
+    click.echo(fit.summary(true=params))
+
+    plt.subplot(1, 1, 1)
+    trace.plot_objectives()
+    plt.savefig(f"{fileprefix}-objectives.pdf", papertype="a4r")
+
+    trace.plot(figsize=[8, 10])
+    plt.savefig(f"{fileprefix}-trace.pdf", papertype="a4r")
+
+    click.echo(f"Script completed in {time() - starttime:.2f}s.")
