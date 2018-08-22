@@ -37,7 +37,9 @@ def stoch_opt(
     if ζ0 is not None:
         ζ = torch.tensor(ζ0, requires_grad=True, dtype=model.dtype, device=model.device)
     else:
-        ζ = torch.zeros(model.d, requires_grad=True, dtype=model.dtype, device=model.device)
+        ζ = torch.zeros(
+            model.d, requires_grad=True, dtype=model.dtype, device=model.device
+        )
     optimizer = opt_type([ζ], **kwargs)
     stop_heur = stop_heur or SupGrowthStoppingHeuristic()
 

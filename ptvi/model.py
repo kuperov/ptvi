@@ -210,7 +210,9 @@ class FilteredStateSpaceModel(Model):
                 label=f"{(1 - α)*100:.0f}% CI",
             )
             if true_z is not None:
-                plt.plot(xs, true_z.cpu().numpy(), color="black", linewidth=2, label="z")
+                plt.plot(
+                    xs, true_z.cpu().numpy(), color="black", linewidth=2, label="z"
+                )
                 plt.legend()
             if fc_steps > 0:
                 plt.axvline(x=self.input_length, color="black")
