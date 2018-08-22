@@ -6,6 +6,7 @@ from torch.distributions import Distribution
 def plot_dens(dists, a, b):
     """Plot a distribution or list of distributions."""
     import matplotlib.pyplot as plt
+
     xs = torch.linspace(a, b, 500)
 
     def plotpdf(p, label=""):
