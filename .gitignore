@@ -10,3 +10,4 @@ sparse_vi/__pycache__
 **/*.pyc
 **pyc
 ptvi.egg-info
+.eggs 

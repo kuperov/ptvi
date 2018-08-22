@@ -1,4 +1,6 @@
 import collections
+import os
+import pickle
 from typing import List
 import torch
 from torch.distributions import (
@@ -11,6 +13,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from ptvi.params import TransformedModelParameter, ModelParameter, LocalParameter
+
 
 
 class MVNPosterior(object):
@@ -236,3 +239,14 @@ class MVNPosterior(object):
             )
         else:
             plt.title(f"Posterior credible interval")
+
+    def save(self, filename):
+        """Save this approximate posterior to disk."""
+        with open(filename, "wb") as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename):
+        """Load an apprxoimate posterior from disk."""
+        with open(filename, "rb") as f:
+            return pickle.load(f)

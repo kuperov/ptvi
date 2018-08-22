@@ -97,7 +97,7 @@ class TestFilteredModel(tests.test_util.TorchTestCase):
         T = 200
         model = FilteredStochasticVolatilityModelFreeProposal(
             input_length=T,
-            num_particles=3000,
+            num_particles=10,
             resample=True,
             device=cuda,
             dtype=torch.float64,
