@@ -31,9 +31,9 @@ class TestMap(unittest.TestCase):
         y = model.simulate(N=N, μ=μ0, σ=σ0)
         fit = map(model, y, quiet=True)
         # approximating density should also be float64 and on the gpu
-        self.assertEqual(fit.q.loc.device.type, "cuda")
+        self.assertEqual(fit.q.loc.device.type, cuda.type)
         self.assertEqual(fit.q.loc.dtype, torch.float64)
-        self.assertEqual(fit.q.variance.device.type, "cuda")
+        self.assertEqual(fit.q.variance.device.type, cuda.type)
         self.assertEqual(fit.q.variance.dtype, torch.float64)
         # ditto for hessian
         g, H = fit.ln_joint_grad_hessian()
