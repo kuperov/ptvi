@@ -458,6 +458,6 @@ class FilteredStateSpaceModelFreeProposal(FilteredStateSpaceModel):
         raise NotImplementedError
 
     @property
-    def mp(self) -> int:
+    def pd(self) -> int:
         """Dimension of the proposal."""
         raise NotImplementedError

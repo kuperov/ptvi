@@ -47,6 +47,7 @@ class PointEstimateTracer(object):
 
     def plot(self, **fig_kw):
         import matplotlib.pyplot as plt
+
         u_values = self.to_unconstrained_array()
         c_values = self.to_constrained_array()
         n = len(self.natural_varnames)
@@ -64,6 +65,7 @@ class PointEstimateTracer(object):
 
     def plot_objectives(self, skip=0):
         import matplotlib.pyplot as plt
+
         xs = range(skip, len(self.objectives))
         plt.plot(xs, self.objectives[skip:])
         plt.title(r"Estimated objective by iteration")

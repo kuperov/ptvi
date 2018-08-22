@@ -1,3 +1,4 @@
+import math
 import torch
 import click
 from torch.distributions import Normal, Categorical
@@ -118,8 +119,15 @@ class FilteredSVModelDualOpt(FilteredStateSpaceModelFreeProposal):
     d = global_param(prior=NormalPrior(0, 1))
     e = global_param(prior=BetaPrior(1, 1), transform="logit", rename="ρ")
 
-    def __init__(self, input_length: int, num_particles: int = 50, resample=True):
-        super().__init__(input_length, num_particles, resample)
+    def __init__(
+        self,
+        input_length: int,
+        num_particles: int = 50,
+        resample=True,
+        dtype=None,
+        device=None,
+    ):
+        super().__init__(input_length, num_particles, resample, dtype, device)
         self._md = 3
         self._pd = 2  # no σ in proposal yet
 
@@ -439,18 +447,36 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
 @click.option("--a", default=1., help="True a parameter value")
 @click.option("--b", default=0., help="True b parameter value")
 @click.option("--c", default=.95, help="True c parameter value")
-@click.option("--particles", default=10000, help="Number of particles")
-@click.option("--double/--single", default=True, help="Use double or single precision")
+@click.option("--particles", default=1000, help="Number of particles")
+@click.option("--double/--single", default=False, help="Use double or single precision")
 @click.option("--gpu/--cpu", default=True, help="Use GPU (if available) or CPU")
 @click.option("--maxiter", default=2 ** 12, help="Maximum iterations for optimization")
-@click.option("--stopping", default='sup', help="Stopping rule: null/exp/sup")
+@click.option("--dual/--single", default=False, help="Use dual optimization")
+@click.option("--bayes/--point", default=False, help="Use probabilistic model")
+@click.option("--stopping", default="sup", help="Stopping rule: null/exp/sup")
 @click.option("--dataseed", default=123, help="Seed for generating data")
 @click.option("--algoseed", default=123, help="Seed for running algorithm")
 @click.option("--fileprefix", default="sv-sim", help="File prefix for plots and output")
-def sim(t, a, b, c, particles, double, gpu, maxiter, stopping, dataseed, algoseed, fileprefix):
+def sim(
+    t,
+    a,
+    b,
+    c,
+    particles,
+    double,
+    gpu,
+    maxiter,
+    dual,
+    bayes,
+    stopping,
+    dataseed,
+    algoseed,
+    fileprefix,
+):
     """This script simulates T observations from a filtered stochastic volatility model
     and attempts to fit the model using VI."""
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import ptvi
@@ -470,13 +496,24 @@ def sim(t, a, b, c, particles, double, gpu, maxiter, stopping, dataseed, algosee
 
     click.echo(f"Writing plots to {fileprefix}-*.pdf")
 
-    model = FilteredStochasticVolatilityModelFreeProposal(
-        input_length=T,
-        num_particles=particles,
-        resample=True,
-        dtype=dtype,
-        device=device,
-    )
+    if dual:
+        model = FilteredSVModelDualOpt(
+            input_length=T,
+            num_particles=particles,
+            resample=True,
+            dtype=dtype,
+            device=device,
+        )
+        opt = ptvi.dual_sgvb if bayes else ptvi.dual_stoch_opt
+    else:
+        model = FilteredStochasticVolatilityModelFreeProposal(
+            input_length=T,
+            num_particles=particles,
+            resample=True,
+            dtype=dtype,
+            device=device,
+        )
+        opt = ptvi.sgvb if bayes else ptvi.stoch_opt
     click.echo(repr(model))
 
     torch.manual_seed(dataseed)
@@ -496,17 +533,13 @@ def sim(t, a, b, c, particles, double, gpu, maxiter, stopping, dataseed, algosee
     torch.manual_seed(algoseed)
     trace = ptvi.PointEstimateTracer(model)
 
-    stopping_type = {'null': ptvi.NullStoppingHeuristic, 'exp': ptvi.ExponentialStoppingHeuristic,
-                     'sup': ptvi.SupGrowthStoppingHeuristic}[stopping]
+    stopping_type = {
+        "null": ptvi.NullStoppingHeuristic,
+        "exp": ptvi.ExponentialStoppingHeuristic,
+        "sup": ptvi.SupGrowthStoppingHeuristic,
+    }[stopping]
 
-    fit = ptvi.stoch_opt(
-        model,
-        y,
-        opt_type=torch.optim.Adamax,
-        tracer=trace,
-        stop_heur=stopping_type(),
-        max_iters=maxiter,
-    )
+    fit = opt(model, y, tracer=trace, stop_heur=stopping_type(), max_iters=maxiter)
 
     click.echo(fit.summary(true=params))
 

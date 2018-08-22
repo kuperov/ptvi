@@ -118,12 +118,14 @@ class MVNPosterior(object):
 
     def plot_elbos(self, skip=0):
         import matplotlib.pyplot as plt
+
         xs = range(skip, len(self.elbo_hats))
         plt.plot(xs, self.elbo_hats[skip:])
         plt.title(r"$\hat L$ by iteration")
 
     def plot_latent(self, **true_vals):
         import matplotlib.pyplot as plt
+
         true_vals = true_vals or {}
         locals = [p for p in self.model.params if isinstance(p, LocalParameter)]
         if len(locals) == 0:
@@ -151,6 +153,7 @@ class MVNPosterior(object):
 
     def plot_data(self):
         import matplotlib.pyplot as plt
+
         plt.plot(self.y.cpu().numpy(), label="data")
         plt.title("Data")
 
@@ -161,6 +164,7 @@ class MVNPosterior(object):
         true value.
         """
         import matplotlib.pyplot as plt
+
         post = getattr(self, f"{variable}_post_marg")
         prior = getattr(self, f"{variable}_prior")
         # figure out range by sampling from posterior
@@ -206,6 +210,7 @@ class MVNPosterior(object):
 
     def plot_sample_paths(self, N=50, fc_steps=0, true_y=None):
         import matplotlib.pyplot as plt
+
         paths = self.sample_paths(N, fc_steps=fc_steps)
         xs, fxs = range(self.input_length), range(self.input_length + fc_steps)
         for i in range(N):
@@ -223,6 +228,7 @@ class MVNPosterior(object):
         self, N: int = 100, α: float = 0.05, true_y=None, fc_steps: int = 0
     ):
         import matplotlib.pyplot as plt
+
         paths = self.sample_paths(N, fc_steps=fc_steps)
         ci_bands = np.empty([self.input_length + fc_steps, 2])
         fxs, xs = range(self.input_length + fc_steps), range(self.input_length)

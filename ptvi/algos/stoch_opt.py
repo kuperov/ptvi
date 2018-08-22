@@ -4,7 +4,12 @@ from time import time
 
 import pandas as pd
 
-from ptvi import Model, SupGrowthStoppingHeuristic, PointEstimateTracer
+from ptvi import (
+    Model,
+    SupGrowthStoppingHeuristic,
+    PointEstimateTracer,
+    FilteredStateSpaceModelFreeProposal,
+)
 from ptvi.params import TransformedModelParameter
 
 
@@ -75,6 +80,87 @@ def stoch_opt(
     qprint(f"Completed {i+1:d} iterations in {t:.2f}s @ {(i+1)/t:.2f} i/s.")
     qprint(_DIVIDER)
     return StochOptResult(model=model, y=y, ζ=ζ.detach(), objectives=losses)
+
+
+def dual_stoch_opt(
+    model: FilteredStateSpaceModelFreeProposal,
+    y: torch.Tensor,
+    ζ0=None,
+    η0=None,
+    max_iters=2 ** 10,
+    λ=0.1,
+    quiet=False,
+    optimizer_type=None,
+    stop_heur=None,
+    tracer: PointEstimateTracer = None,
+    **kwargs,
+):
+    """Use stochastic optimization to compute the maximum a postiori (MAP) by maximizing
+    the log joint function with respect to the parameter ζ (in optimization space).
+
+    Call self.unpack() to convert parameters in natural coordinates.
+    """
+
+    def qprint(s):
+        if not quiet:
+            print(s)
+
+    optimizer_type = optimizer_type or torch.optim.Adam
+
+    ζ0 = ζ0 if ζ0 is not None else torch.zeros(model.md)
+    ζ = torch.tensor(ζ0, requires_grad=True, dtype=model.dtype, device=model.device)
+
+    η0 = ζ0 if η0 is not None else torch.zeros(model.pd)
+    η = torch.tensor(η0, requires_grad=True, dtype=model.dtype, device=model.device)
+
+    # one optimizer for each parameter, ie for model and proposals
+    model_optimizer = optimizer_type([ζ], **kwargs)
+    proposal_optimizer = optimizer_type([η], **kwargs)
+    stop_heur = stop_heur or SupGrowthStoppingHeuristic()
+
+    qprint(_header(model_optimizer, stop_heur, model, λ))
+    t, losses, smooth_loss = -time(), [], None
+    for i in range(int(max_iters)):
+
+        def model_closure():
+            model_optimizer.zero_grad()
+            loss = -model.ln_joint(y, ζ, η.detach())
+            loss.backward()
+            return loss
+
+        neg_loss = model_optimizer.step(model_closure)
+        loss_d = -neg_loss.detach()
+        smooth_loss = (
+            loss_d if smooth_loss is None else λ * loss_d + smooth_loss * (1 - λ)
+        )
+
+        def proposal_closure():
+            proposal_optimizer.zero_grad()
+            loss = -model.ln_joint(y, ζ.detach(), η)
+            loss.backward()
+            return loss
+
+        proposal_optimizer.step(proposal_closure())
+
+        if tracer is not None:
+            tracer.append(ζ, loss_d)
+        if not i & (i - 1):
+            qprint(f"{i:8d}. smoothed stochastic loss = {smooth_loss:.1f}")
+        if math.isnan(loss_d):
+            raise Exception("Non-finite neg_loss encountered.")
+        elif stop_heur.early_stop(loss_d):
+            qprint("Convergence criterion met.")
+            break
+        losses.append(loss_d)
+    else:
+        qprint("WARNING: Maximum iterations reached.")
+    qprint(f"{i:8d}. (unsmoothed) stochastic loss = {loss_d:.1f}")
+    t += time()
+    qprint(f"Completed {i+1:d} iterations in {t:.2f}s @ {(i+1)/t:.2f} i/s.")
+    qprint(_DIVIDER)
+    return StochOptResult(
+        model=model, y=y, ζ=torch.cat([ζ.detach(), η.detach()]), objectives=losses
+    )
 
 
 def _header(optimizer, stop_heur, model, λ):
