@@ -20,4 +20,4 @@ class TestPointEstimateTracer(unittest.TestCase):
         self.assertEqual(c_arr.shape, (10, 2))
         self.assertTrue(np.allclose(c_arr[:, 0], u_arr[:, 0]))
         self.assertTrue(np.allclose(np.log(c_arr[:, 1]), u_arr[:, 1]))
-        patch("ptvi.model.plt.show", t.plot())
+        patch("ptvi.model.plt.show", t.plot(figsize=[8, 10]))

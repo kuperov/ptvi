@@ -8,6 +8,7 @@ from ptvi import (
     StoppingHeuristic,
     SupGrowthStoppingHeuristic,
     FilteredStateSpaceModelFreeProposal,
+    PointEstimateTracer,
 )
 
 
@@ -27,6 +28,7 @@ def sgvb(
     optimizer_type: type = None,
     quiet=False,
     λ=.1,
+    tracer: PointEstimateTracer = None,
     **opt_params,
 ):
     """Train the model using VI.
@@ -96,6 +98,8 @@ def sgvb(
         if stop_heur.early_stop(-objective.detach()):
             qprint("Stopping heuristic criterion satisfied")
             break
+        if tracer is not None:
+            tracer.append(u.detach().clone(), -objective.detach())
     else:
         qprint("WARNING: maximum iterations reached.")
     t += time()
@@ -122,6 +126,7 @@ def mf_sgvb(
     optimizer_type: type = None,
     quiet=False,
     λ=.1,
+    tracer: PointEstimateTracer = None,
     **opt_params,
 ):
     """Train the model using VI.
@@ -192,6 +197,8 @@ def mf_sgvb(
         if stop_heur.early_stop(-objective.data):
             qprint("Stopping heuristic criterion satisfied")
             break
+        if tracer is not None:
+            tracer.append(u.detach().clone(), -objective.detach())
     else:
         qprint("WARNING: maximum iterations reached.")
     t += time()
@@ -221,6 +228,7 @@ def dual_sgvb(
     λ=.1,
     model_opt_params=None,
     proposal_opt_params=None,
+    tracer: PointEstimateTracer = None,
 ):
     """Train the model using VI.
 
@@ -239,12 +247,12 @@ def dual_sgvb(
     stop_heur = stop_heur or _default_heuristic_type()
 
     # dense approximation: q = N(u, LL')
-    um0 = torch.tensor(um0) if um0 is not None else torch.zeros(model.md)
-    Lm0 = torch.tensor(Lm0) if Lm0 is not None else torch.eye(model.md)
+    um0 = um0 if um0 is not None else torch.zeros(model.md)
+    Lm0 = Lm0 if Lm0 is not None else torch.eye(model.md)
 
     # dense approximation: q = N(u, LL')
-    up0 = torch.tensor(up0) if up0 is not None else torch.zeros(model.pd)
-    Lp0 = torch.tensor(Lp0) if Lp0 is not None else torch.eye(model.pd)
+    up0 = up0 if up0 is not None else torch.zeros(model.pd)
+    Lp0 = Lp0 if Lp0 is not None else torch.eye(model.pd)
 
     um = torch.tensor(um0, requires_grad=True, dtype=model.dtype, device=model.device)
     Lm = torch.tensor(Lm0, requires_grad=True, dtype=model.dtype, device=model.device)
@@ -349,6 +357,8 @@ def dual_sgvb(
         if stop_heur.early_stop(-model_objective.data):
             qprint("Stopping heuristic criterion satisfied for model elbo")
             break
+        if tracer is not None:
+            tracer.append(um.detach().clone(), -model_objective.detach())
     else:
         qprint("WARNING: maximum iterations reached.")
     t += time()
