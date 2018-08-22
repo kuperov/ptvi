@@ -450,6 +450,8 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
 def sim(t, a, b, c, particles, double, gpu, maxiter, stopping, dataseed, algoseed, fileprefix):
     """This script simulates T observations from a filtered stochastic volatility model
     and attempts to fit the model using VI."""
+    import matplotlib
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import ptvi
     from time import time

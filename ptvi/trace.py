@@ -1,5 +1,4 @@
 import torch
-import matplotlib.pyplot as plt
 
 from ptvi.params import TransformedModelParameter
 
@@ -47,6 +46,7 @@ class PointEstimateTracer(object):
         return carr
 
     def plot(self, **fig_kw):
+        import matplotlib.pyplot as plt
         u_values = self.to_unconstrained_array()
         c_values = self.to_constrained_array()
         n = len(self.natural_varnames)
@@ -63,6 +63,7 @@ class PointEstimateTracer(object):
         plt.suptitle("Optimization trace - point estimates")
 
     def plot_objectives(self, skip=0):
+        import matplotlib.pyplot as plt
         xs = range(skip, len(self.objectives))
         plt.plot(xs, self.objectives[skip:])
         plt.title(r"Estimated objective by iteration")

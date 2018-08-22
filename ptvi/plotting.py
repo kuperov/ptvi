@@ -1,11 +1,11 @@
 from numbers import Number
 import torch
 from torch.distributions import Distribution
-import matplotlib.pyplot as plt
 
 
 def plot_dens(dists, a, b):
     """Plot a distribution or list of distributions."""
+    import matplotlib.pyplot as plt
     xs = torch.linspace(a, b, 500)
 
     def plotpdf(p, label=""):
