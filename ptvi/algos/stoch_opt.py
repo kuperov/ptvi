@@ -116,15 +116,17 @@ def dual_stoch_opt(
     # one optimizer for each parameter, ie for model and proposals
     model_optimizer = optimizer_type([ζ], **kwargs)
     proposal_optimizer = optimizer_type([η], **kwargs)
+
     stop_heur = stop_heur or SupGrowthStoppingHeuristic()
 
     qprint(_header(model_optimizer, stop_heur, model, λ))
     t, losses, smooth_loss = -time(), [], None
+
     for i in range(int(max_iters)):
 
         def model_closure():
             model_optimizer.zero_grad()
-            loss = -model.ln_joint(y, ζ, η.detach())
+            loss = -model.ln_joint(y, ζ, η)
             loss.backward()
             return loss
 
@@ -136,11 +138,11 @@ def dual_stoch_opt(
 
         def proposal_closure():
             proposal_optimizer.zero_grad()
-            loss = -model.ln_joint(y, ζ.detach(), η)
+            loss = -model.ln_joint(y, ζ, η)
             loss.backward()
             return loss
 
-        proposal_optimizer.step(proposal_closure())
+        proposal_optimizer.step(proposal_closure)
 
         if tracer is not None:
             tracer.append(ζ, loss_d)

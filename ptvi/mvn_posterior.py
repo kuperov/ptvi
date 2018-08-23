@@ -14,7 +14,6 @@ import numpy as np
 from ptvi.params import TransformedModelParameter, ModelParameter, LocalParameter
 
 
-
 class MVNPosterior(object):
     """Base class for representing model results."""
 

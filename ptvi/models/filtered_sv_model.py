@@ -78,9 +78,6 @@ class FilteredStochasticVolatilityModel(FilteredStateSpaceModel):
         _, b, c = self.unpack_natural(ζ)
         return AR1Proposal(μ=b, ρ=c, σ=1)
 
-    def forecast(self, ζ, y, fc_steps):
-        pass
-
     def __repr__(self):
         return (
             f"Stochastic volatility model:\n"
@@ -337,9 +334,6 @@ class FilteredStochasticVolatilityModelFixedParams(FilteredStateSpaceModel):
         d, e = self.unpack_natural(ζ)
         return AR1Proposal(μ=d, ρ=e, σ=1)
 
-    def forecast(self, ζ, y, fc_steps):
-        pass
-
     def __repr__(self):
         return (
             f"Stochastic volatility model:\n"
@@ -424,9 +418,6 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
     def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
         _, _, _, d, e, f = self.unpack_natural(ζ)
         return AR1Proposal(μ=d, ρ=e, σ=f)
-
-    def forecast(self, ζ, y, fc_steps):
-        pass
 
     def __repr__(self):
         return (

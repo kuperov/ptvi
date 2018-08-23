@@ -44,11 +44,12 @@ class TestStochOpt(unittest.TestCase):
 
 
 class TestDualStochOpt(unittest.TestCase):
+
     def test_basic_optimization(self):
         data_seed, algo_seed = 123, 123
         params = dict(a=1., b=0., c=.95)
         T = 200
-        model = FilteredSVModelDualOpt(input_length=T, num_particles=30, resample=True)
+        model = FilteredSVModelDualOpt(input_length=T, num_particles=10, resample=True)
         torch.manual_seed(data_seed)
         y, z_true = model.simulate(**params)
         torch.manual_seed(algo_seed)
