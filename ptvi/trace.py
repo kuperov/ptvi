@@ -46,7 +46,7 @@ class PointEstimateTracer(object):
                     carr[j, i] = t(uarr[j, i])  # slow but idc
         return carr
 
-    def plot(self, **fig_kw):
+    def plot(self, true={}, **fig_kw):
         import matplotlib.pyplot as plt
 
         u_values = self.to_unconstrained_array()
@@ -54,13 +54,13 @@ class PointEstimateTracer(object):
         n = len(self.natural_varnames)
         fig, axes = plt.subplots(n, 2, **fig_kw)
         for i in range(n):
-            axes[i, 0].plot(
-                c_values[:, i].cpu().numpy(), label=self.natural_varnames[i]
-            )
+            nat = self.natural_varnames[i]
+            axes[i, 0].plot(c_values[:, i].cpu().numpy(), label=f"$\\hat {nat}$")
+            if nat in true:
+                axes[i, 0].axhline(y=true[nat], linestyle="--", label=nat)
             axes[i, 0].legend()
-            axes[i, 1].plot(
-                u_values[:, i].cpu().numpy(), label=self.unconstrained_varnames[i]
-            )
+            unc = self.unconstrained_varnames[i]
+            axes[i, 1].plot(u_values[:, i].cpu().numpy(), label=f"$\\hat {unc}$")
             axes[i, 1].legend()
         plt.suptitle("Optimization trace - point estimates")
 

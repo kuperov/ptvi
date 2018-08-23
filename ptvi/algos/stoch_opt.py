@@ -162,9 +162,7 @@ def dual_stoch_opt(
     qprint(f"Completed {i+1:d} iterations in {t:.2f}s @ {(i+1)/t:.2f} i/s.")
     qprint(_DIVIDER)
     param = torch.cat([ζ.detach(), η.detach()])  # todo: .cpu()
-    return StochOptResult(
-        model=model, y=y, ζ=param, objectives=losses
-    )
+    return StochOptResult(model=model, y=y, ζ=param, objectives=losses)
 
 
 def _header(optimizer, stop_heur, model, λ):

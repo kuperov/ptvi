@@ -3,11 +3,15 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
-from ptvi import PointEstimateTracer, UnivariateGaussian, FilteredSVModelDualOpt, DualPointEstimateTracer
+from ptvi import (
+    PointEstimateTracer,
+    UnivariateGaussian,
+    FilteredSVModelDualOpt,
+    DualPointEstimateTracer,
+)
 
 
 class TestPointEstimateTracer(unittest.TestCase):
-
     def test_trace(self):
         m = UnivariateGaussian()
         t = PointEstimateTracer(m)
@@ -19,11 +23,10 @@ class TestPointEstimateTracer(unittest.TestCase):
         self.assertEqual(c_arr.shape, (10, 2))
         self.assertTrue(np.allclose(c_arr[:, 0], u_arr[:, 0]))
         self.assertTrue(np.allclose(np.log(c_arr[:, 1]), u_arr[:, 1]))
-        patch("ptvi.model.plt.show", t.plot(figsize=[8, 10]))
+        patch("ptvi.model.plt.show", t.plot(figsize=[8, 10], true={"μ": 0., "σ": 1.}))
 
 
 class TestDualPointEstimateTracer(unittest.TestCase):
-
     def test_trace(self):
         m = FilteredSVModelDualOpt(input_length=10)
         t = DualPointEstimateTracer(m)

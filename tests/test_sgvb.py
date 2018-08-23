@@ -52,7 +52,8 @@ class TestMFSGVB(unittest.TestCase):
             stop_heur=stop_heur,
         )
         import tempfile
-        path = os.path.join(tempfile.mkdtemp(), 'dummy.posterior')
+
+        path = os.path.join(tempfile.mkdtemp(), "dummy.posterior")
         fit.save(path)
         fit2 = MVNPosterior.load(path)
         self.assertTrue(torch.allclose(fit.q.loc, fit2.q.loc))

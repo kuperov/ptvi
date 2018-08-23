@@ -5,10 +5,10 @@ import torch
 
 
 if torch.cuda.is_available():
-    cuda = torch.device('cuda')
+    cuda = torch.device("cuda")
 else:
-    warn('Running CUDA tests on CPU')
-    cuda = torch.device('cpu')
+    warn("Running CUDA tests on CPU")
+    cuda = torch.device("cpu")
 
 
 class TestMap(unittest.TestCase):
