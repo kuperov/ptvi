@@ -136,7 +136,7 @@ class FilteredSVModelDualOpt(FilteredStateSpaceModelFreeProposal):
         for t in range(1, self.input_length):
             z_true[t] = b + c * z_true[t - 1] + Normal(0, 1).sample()
         y = Normal(0, torch.exp(a) * torch.exp(z_true / 2)).sample()
-        return y, z_true
+        return y.type(self.dtype).to(self.device), z_true.type(self.dtype).to(self.device)
 
     def conditional_log_prob(self, t, y, z, ζ):
         """Compute log p(x_t, z_t | y_{0:t-1}, z_{0:t-1}, ζ).
@@ -193,7 +193,7 @@ class FilteredSVModelDualOpt(FilteredStateSpaceModelFreeProposal):
         """
         log_phatN = 0.
         log_N = math.log(self.num_particles)
-        log_w = torch.full((self.num_particles,), -log_N)
+        log_w = torch.full((self.num_particles,), -log_N, dtype=self.dtype, device=self.device)
         Z = None
         proposal = self.proposal_for(y, ζ)
         for t in range(self.input_length):
@@ -210,7 +210,7 @@ class FilteredSVModelDualOpt(FilteredStateSpaceModelFreeProposal):
                 if self.resample and ESS < self.num_particles:
                     a = Categorical(torch.exp(log_w)).sample((self.num_particles,))
                     Z = (Z[:, a]).clone()
-                    log_w = torch.full((self.num_particles,), -log_N)
+                    log_w = torch.full((self.num_particles,), -log_N, dtype=self.dtype, device=self.device)
         if sample is not None:
             with torch.no_grad():
                 # samples should be M * T, where M is the number of samples

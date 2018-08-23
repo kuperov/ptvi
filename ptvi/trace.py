@@ -1,12 +1,13 @@
 import torch
 
 from ptvi.params import TransformedModelParameter
+from ptvi import Model, FilteredStateSpaceModelFreeProposal
 
 
 class PointEstimateTracer(object):
     """Utility for tracing the progress of optimizations. This is just for debugging."""
 
-    def __init__(self, model):
+    def __init__(self, model: Model):
         self.model = model
         self.natural_values, self.unconstrained_values = [], []
         self.natural_varnames, self.unconstrained_varnames = [], []
@@ -69,3 +70,13 @@ class PointEstimateTracer(object):
         xs = range(skip, len(self.objectives))
         plt.plot(xs, self.objectives[skip:])
         plt.title(r"Estimated objective by iteration")
+
+
+class DualPointEstimateTracer(PointEstimateTracer):
+    """Tracer for dual optimization algorithms."""
+
+    def __init__(self, model: FilteredStateSpaceModelFreeProposal):
+        super().__init__(model)
+
+    def append(self, ζ, η, objective):
+        super().append(torch.cat([ζ, η]), objective)

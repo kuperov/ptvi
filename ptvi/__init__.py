@@ -20,6 +20,6 @@ from .model import (
     AR1Proposal,
     FilteredStateSpaceModelFreeProposal,
 )
-from .trace import PointEstimateTracer
+from .trace import PointEstimateTracer, DualPointEstimateTracer
 from .algos import *
 from .models import *

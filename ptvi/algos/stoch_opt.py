@@ -8,6 +8,7 @@ from ptvi import (
     Model,
     SupGrowthStoppingHeuristic,
     PointEstimateTracer,
+    DualPointEstimateTracer,
     FilteredStateSpaceModelFreeProposal,
 )
 from ptvi.params import TransformedModelParameter
@@ -92,7 +93,7 @@ def dual_stoch_opt(
     quiet=False,
     optimizer_type=None,
     stop_heur=None,
-    tracer: PointEstimateTracer = None,
+    tracer: DualPointEstimateTracer = None,
     **kwargs,
 ):
     """Use stochastic optimization to compute the maximum a postiori (MAP) by maximizing
@@ -145,7 +146,7 @@ def dual_stoch_opt(
         proposal_optimizer.step(proposal_closure)
 
         if tracer is not None:
-            tracer.append(ζ, loss_d)
+            tracer.append(ζ, η, loss_d)
         if not i & (i - 1):
             qprint(f"{i:8d}. smoothed stochastic loss = {smooth_loss:.1f}")
         if math.isnan(loss_d):
@@ -160,8 +161,9 @@ def dual_stoch_opt(
     t += time()
     qprint(f"Completed {i+1:d} iterations in {t:.2f}s @ {(i+1)/t:.2f} i/s.")
     qprint(_DIVIDER)
+    param = torch.cat([ζ.detach(), η.detach()])  # todo: .cpu()
     return StochOptResult(
-        model=model, y=y, ζ=torch.cat([ζ.detach(), η.detach()]), objectives=losses
+        model=model, y=y, ζ=param, objectives=losses
     )
 
 
