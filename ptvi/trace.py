@@ -57,10 +57,16 @@ class PointEstimateTracer(object):
             nat = self.natural_varnames[i]
             axes[i, 0].plot(c_values[:, i].cpu().numpy(), label=f"$\\hat {nat}$")
             if nat in true:
-                axes[i, 0].axhline(y=true[nat], linestyle="--", label=nat)
+                axes[i, 0].axhline(y=true[nat], linestyle="--", label=f'${nat}_0$')
             axes[i, 0].legend()
             unc = self.unconstrained_varnames[i]
             axes[i, 1].plot(u_values[:, i].cpu().numpy(), label=f"$\\hat {unc}$")
+            if nat in true:
+                if self.transforms[i] is not None:
+                    tfm_true = self.transforms[i].inv(torch.tensor(true[nat])).numpy()
+                else:
+                    tfm_true = true[nat]
+                axes[i, 1].axhline(y=tfm_true, linestyle="--", label=f'${unc}_0$')
             axes[i, 1].legend()
         plt.suptitle("Optimization trace - point estimates")
 
