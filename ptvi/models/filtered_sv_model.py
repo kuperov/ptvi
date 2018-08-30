@@ -285,27 +285,31 @@ class FilteredStochasticVolatilityModelFixedParams(FilteredStateSpaceModel):
 
     .. math::
         x_t = exp(a)exp(z_t/2) ε_t       ε_t ~ Ν(0,1)
-        z_t = b + c * z_{t-1} + ν_t    ν_t ~ Ν(0,1)
+        z_t = b + c * z_{t-1} + f ν_t    ν_t ~ Ν(0,1)
     """
 
     name = "Particle filtered stochastic volatility model"
     d = global_param(prior=NormalPrior(0, 1))
     e = global_param(prior=BetaPrior(1, 1), transform="logit", rename="ρ")
+    f = global_param(prior=LogNormalPrior(0, 1), transform="log")
 
-    def __init__(self, input_length, num_particles, resample):
-        self.a, self.b, self.c = map(torch.tensor, (0.5, 1., 0.95))
+    def __init__(self, input_length, num_particles, resample, a=0.5, b=1., c=0.95, dtype=None, device=None):
         super().__init__(
-            input_length=input_length, num_particles=num_particles, resample=resample
+            input_length=input_length, num_particles=num_particles, resample=resample, dtype=dtype, device=device
         )
+        self.a, self.b, self.c = (torch.tensor(x, dtype=self.dtype, device=self.device) for x in  (a, b, c))
 
     def simulate(self):
         """Simulate from p(x, z | θ)"""
-        z_true = torch.empty((self.input_length,))
+        z_true = torch.empty((self.input_length,), dtype=self.dtype, device=self.device)
         z_true[0] = Normal(self.b, (1 - self.c ** 2) ** (-.5)).sample()
         for t in range(1, self.input_length):
-            z_true[t] = self.b + self.c * z_true[t - 1] + Normal(0, 1).sample()
+            z_true[t] = self.b + self.c * z_true[t - 1] + torch.randn(1, dtype=self.dtype, device=self.device)
         x = Normal(0, torch.exp(self.a) * torch.exp(z_true / 2)).sample()
-        return x, z_true
+        return (
+            x.type(self.dtype).to(self.device),
+            z_true.type(self.dtype).to(self.device),
+        )
 
     def conditional_log_prob(self, t, y, z, ζ):
         """Compute log p(x_t, z_t | y_{0:t-1}, z_{0:t-1}, ζ).
@@ -341,19 +345,19 @@ class FilteredStochasticVolatilityModelFixedParams(FilteredStateSpaceModel):
         return Normal(0, torch.exp(self.a) * torch.exp(z / 2)).sample()
 
     def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
-        d, e = self.unpack_natural(ζ)
-        return AR1Proposal(μ=d, ρ=e, σ=1)
+        d, e, f = self.unpack_natural(ζ)
+        return AR1Proposal(μ=d, ρ=torch.tensor(.95, dtype=self.dtype), σ=f)
 
     def __repr__(self):
         return (
             f"Stochastic volatility model:\n"
-            f"\tx_t = exp(a * z_t/2) ε_t      t=1, …, {self.input_length}\n"
-            f"\tz_t = b + c * z_{{t-1}} + ν_t,  t=2, …, {self.input_length}\n"
+            f"\tx_t = exp(a * z_t/2) ε_t        t=1, …, {self.input_length}\n"
+            f"\tz_t = b + c * z_{{t-1}} + ν_t,    t=2, …, {self.input_length}\n"
             f"\tz_1 = b + 1/√(1 - c^2) ν_1\n"
             f"\twhere ε_t, ν_t ~ Ν(0,1)\n\n"
             f"Particle filter with {self.num_particles} particles, AR(1) proposal:\n"
-            f"\tz_t = d + e * z_{{t-1}} + η_t,  t=2, …, {self.input_length}\n"
-            f"\tz_1 = d + 1/√(1 - e^2) η_1\n"
+            f"\tz_t = d + e * z_{{t-1}} + f η_t,  t=2, …, {self.input_length}\n"
+            f"\tz_1 = d + f/√(1 - e^2) η_1\n"
             f"\twhere η_t ~ Ν(0,1)\n"
         )
 
