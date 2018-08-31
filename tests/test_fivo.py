@@ -4,7 +4,6 @@
 from unittest.mock import patch
 
 import tests.test_util
-from torch.distributions import Gumbel, StudentT
 
 from ptvi import *
 from ptvi.models.filtered_sv_model import *

@@ -5,13 +5,12 @@ from typing import List
 import torch
 from torch.distributions import (
     Distribution,
-    MultivariateNormal,
     Normal,
     TransformedDistribution,
 )
 import pandas as pd
 import numpy as np
-from ptvi.params import TransformedModelParameter, ModelParameter, LocalParameter
+from ptvi.params import TransformedModelParameter, LocalParameter
 
 
 class MVNPosterior(object):

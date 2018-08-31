@@ -1,3 +1,4 @@
+from warnings import warn
 from typing import List
 
 import math
@@ -287,7 +288,8 @@ class FilteredStateSpaceModel(Model):
                 if self.resample and ESS < self.num_particles:
                     w = torch.exp(log_w)
                     if not all(torch.isfinite(w)):
-                        raise Exception(f'Overflow: log_w = {log_w}')
+                        warn(f'Overflow: log_w = {log_w}')
+                        w = torch.tensor(1. - torch.isfinite(w), dtype=self.dtype, device=self.device)
                     a = Categorical(w).sample((self.num_particles,))
                     Z = (Z[:, a]).clone()
                     log_w = torch.full(
@@ -331,9 +333,9 @@ class AR1Proposal(PFProposal):
         Z has an extra dimension, of N particles.
         """
         if t == 0:
-            return Normal(0, (1 - self.ρ ** 2) ** (-.5)).sample((N,))
+            return Normal(0, (1 - self.ρ ** 2) ** (-.5)).rsample((N,))
         else:
-            return Normal(self.μ + self.ρ * Z[t - 1], 1).sample()
+            return Normal(self.μ + self.ρ * Z[t - 1], 1).rsample()
 
     def conditional_log_prob(self, t, Z):
         """Compute log q(z_t | z_{t-1}, φ)"""
@@ -422,7 +424,7 @@ class FilteredStateSpaceModelFreeProposal(FilteredStateSpaceModel):
         log_N = math.log(self.num_particles)
         log_w = torch.full((self.num_particles,), -log_N)
         Z = None
-        proposal = self.proposal_for(y, ζ)
+        proposal = self.proposal_for(y, η)
         for t in range(self.input_length):
             zt = proposal.conditional_sample(t, Z, self.num_particles).unsqueeze(0)
             Z = torch.cat([Z, zt]) if Z is not None else zt
