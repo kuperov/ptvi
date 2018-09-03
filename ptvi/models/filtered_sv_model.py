@@ -413,7 +413,7 @@ class FilteredStochasticVolatilityModelFreeProposal(FilteredStateSpaceModel):
         return log_pzt + log_pxt
 
     def sample_observed(self, ζ, y, fc_steps=0):
-        a, _, _, _, _ = self.unpack_natural(ζ)
+        a, _, _, _, _, _ = self.unpack_natural(ζ)
         z = self.sample_unobserved(ζ, y, fc_steps)
         return Normal(0, torch.exp(a) * torch.exp(z / 2)).sample()
 

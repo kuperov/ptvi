@@ -9,6 +9,7 @@ from ptvi import (
     SupGrowthStoppingHeuristic,
     FilteredStateSpaceModelFreeProposal,
     PointEstimateTracer,
+    DualPointEstimateTracer
 )
 
 
@@ -228,7 +229,7 @@ def dual_sgvb(
     λ=.1,
     model_opt_params=None,
     proposal_opt_params=None,
-    tracer: PointEstimateTracer = None,
+    tracer: DualPointEstimateTracer = None,
 ):
     """Train the model using VI.
 
@@ -358,7 +359,7 @@ def dual_sgvb(
             qprint("Stopping heuristic criterion satisfied for model elbo")
             break
         if tracer is not None:
-            tracer.append(um.detach().clone(), -model_objective.detach())
+            tracer.append(um.detach().clone(), up.detach().clone(), -model_objective.detach())
     else:
         qprint("WARNING: maximum iterations reached.")
     t += time()
@@ -373,6 +374,140 @@ def dual_sgvb(
         [
             torch.cat([Lm.detach(), torch.zeros((model.md, model.pd))], dim=1),
             torch.cat([torch.zeros((model.pd, model.md)), Lp.detach()], dim=1),
+        ],
+        dim=0,
+    )
+    q = MultivariateNormal(u, scale_tril=L)
+    return model.result_type(model=model, elbo_hats=model_elbo_hats, y=y, q=q)
+
+
+def sgvb_and_stoch_opt(
+    model: FilteredStateSpaceModelFreeProposal,
+    y: torch.Tensor,
+    um0: torch.Tensor = None,
+    Lm0: torch.Tensor = None,
+    η0: torch.Tensor = None,
+    max_iters: int = 2 ** 20,
+    sim_entropy: bool = True,
+    stop_heur: StoppingHeuristic = None,
+    num_draws: int = 1,
+    model_optimizer_type: type = None,
+    proposal_optimizer_type: type = None,
+    quiet=False,
+    λ=.1,
+    model_opt_params=None,
+    proposal_opt_params=None,
+    tracer: DualPointEstimateTracer = None,
+):
+    """Train the model using VI.
+
+    Args:
+        model: a Model instance to fit to the data
+        y: (a 1-tensor) data vector
+        max_iters: maximum number of iterations
+        sim_entropy: if true, simulate entropy term
+        quiet: suppress output
+        λ: exponential smoothing parameter for displaying estimated elbo
+           (display only; does not affect the optimization)
+
+    Returns:
+        A SGVBResult object with the approximate posterior.
+    """
+    stop_heur = stop_heur or _default_heuristic_type()
+
+    # dense approximation: q = N(u, LL')
+    um0 = um0 if um0 is not None else torch.zeros(model.md)
+    Lm0 = Lm0 if Lm0 is not None else torch.eye(model.md)
+
+    # point estimate only
+    η0 = η0 if η0 is not None else torch.zeros(model.pd)
+    η = torch.tensor(η0, requires_grad=True, dtype=model.dtype, device=model.device)
+
+    um = torch.tensor(um0, requires_grad=True, dtype=model.dtype, device=model.device)
+    Lm = torch.tensor(Lm0, requires_grad=True, dtype=model.dtype, device=model.device)
+
+    model_opt_params = model_opt_params or {}
+    proposal_opt_params = proposal_opt_params or {}
+
+    model_optimizer = (model_optimizer_type or Adadelta)([um, Lm], **model_opt_params)
+    prop_optimizer = (proposal_optimizer_type or Adadelta)([η], **proposal_opt_params)
+
+    def qprint(s):
+        if not quiet:
+            print(s)
+
+    qprint(
+        _header(
+            "Alternating model/proposal structured",
+            model_optimizer,
+            sim_entropy,
+            stop_heur,
+            model,
+            num_draws,
+            λ,
+        )
+    )
+
+    def sim_elbo_hat():
+        trL = torch.tril(Lm)
+        E_ln_joint, H_q_hat = 0., 0.  # accumulators
+        if not sim_entropy:
+            q = MultivariateNormal(loc=um, scale_tril=trL)
+            H_q_hat = -q.entropy()
+        else:
+            # don't accumulate gradients; see https://arxiv.org/abs/1703.09194
+            q = MultivariateNormal(loc=um.detach(), scale_tril=trL.detach())
+        for _ in range(num_draws):
+            εm = torch.randn((model.md,), device=model.device, dtype=model.dtype)
+            ζ = um + trL @ εm  # reparam trick
+            E_ln_joint += model.ln_joint(y, ζ, η) / num_draws
+            if sim_entropy:
+                H_q_hat += q.log_prob(ζ) / num_draws
+        return E_ln_joint - H_q_hat
+
+    t, i = -time(), 0
+    model_elbo_hats, proposal_elbo_hats = [], []
+    smoothed_model_objective = None
+    for i in range(max_iters):
+        model_optimizer.zero_grad()
+        prop_optimizer.zero_grad()
+        model_objective = -sim_elbo_hat()
+        model_objective.backward()
+        if torch.isnan(model_objective.detach()):
+            raise Exception("Infinite model objective; cannot continue.")
+        model_optimizer.step()
+        prop_optimizer.step()
+        model_elbo_hats.append(-model_objective.detach())
+        if smoothed_model_objective is not None:
+            smoothed_model_objective = (
+                λ * model_objective.detach() + (1. - λ) * smoothed_model_objective
+            )
+        else:
+            smoothed_model_objective = model_objective.detach()
+
+        if not i & (i - 1):
+            qprint(
+                f"{i: 8d}. smoothed model elbo ={float(-smoothed_model_objective):8.2f}"
+            )
+        if stop_heur.early_stop(-model_objective.data):
+            qprint("Stopping heuristic criterion satisfied for model elbo")
+            break
+        if tracer is not None:
+            tracer.append(um.detach().clone(), η.detach().clone(), -model_objective.detach())
+    else:
+        qprint("WARNING: maximum iterations reached.")
+    t += time()
+    qprint(
+        f"{i: 8d}. smoothed model elbo ={float(-smoothed_model_objective):8.2f}, "
+        f"proposal elbo ={float(-smoothed_proposal_objective):8.2f}\n"
+        f"Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n"
+        f"{_DIVIDER}"
+    )
+    u = torch.cat([um.detach(), η.detach()])
+    L = torch.cat(
+        [
+            torch.cat([Lm.detach(), torch.zeros((model.md, model.pd))], dim=1),
+            torch.cat([torch.zeros((model.pd, model.md)), torch.eye(model.pd)], dim=1),
         ],
         dim=0,
     )
