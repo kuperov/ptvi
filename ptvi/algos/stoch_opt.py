@@ -111,7 +111,7 @@ def dual_stoch_opt(
     ζ0 = ζ0 if ζ0 is not None else torch.zeros(model.md)
     ζ = torch.tensor(ζ0, requires_grad=True, dtype=model.dtype, device=model.device)
 
-    η0 = ζ0 if η0 is not None else torch.zeros(model.pd)
+    η0 = η0 if η0 is not None else torch.zeros(model.pd)
     η = torch.tensor(η0, requires_grad=True, dtype=model.dtype, device=model.device)
 
     # one optimizer for each parameter, ie for model and proposals
