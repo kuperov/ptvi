@@ -9,7 +9,7 @@ from ptvi import (
     SupGrowthStoppingHeuristic,
     FilteredStateSpaceModelFreeProposal,
     PointEstimateTracer,
-    DualPointEstimateTracer
+    DualPointEstimateTracer,
 )
 
 
@@ -359,7 +359,9 @@ def dual_sgvb(
             qprint("Stopping heuristic criterion satisfied for model elbo")
             break
         if tracer is not None:
-            tracer.append(um.detach().clone(), up.detach().clone(), -model_objective.detach())
+            tracer.append(
+                um.detach().clone(), up.detach().clone(), -model_objective.detach()
+            )
     else:
         qprint("WARNING: maximum iterations reached.")
     t += time()
@@ -493,7 +495,9 @@ def sgvb_and_stoch_opt(
             qprint("Stopping heuristic criterion satisfied for model elbo")
             break
         if tracer is not None:
-            tracer.append(um.detach().clone(), η.detach().clone(), -model_objective.detach())
+            tracer.append(
+                um.detach().clone(), η.detach().clone(), -model_objective.detach()
+            )
     else:
         qprint("WARNING: maximum iterations reached.")
     t += time()

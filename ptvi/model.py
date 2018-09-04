@@ -288,8 +288,10 @@ class FilteredStateSpaceModel(Model):
                 if self.resample and ESS < self.num_particles:
                     w = torch.exp(log_w)
                     if not all(torch.isfinite(w)):
-                        warn(f'Overflow: log_w = {log_w}')
-                        w = torch.tensor(1. - torch.isfinite(w), dtype=self.dtype, device=self.device)
+                        warn(f"Overflow: log_w = {log_w}")
+                        w = torch.tensor(
+                            1. - torch.isfinite(w), dtype=self.dtype, device=self.device
+                        )
                     a = Categorical(w).sample((self.num_particles,))
                     Z = (Z[:, a]).clone()
                     log_w = torch.full(

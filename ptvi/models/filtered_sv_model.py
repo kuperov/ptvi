@@ -293,18 +293,38 @@ class FilteredStochasticVolatilityModelFixedParams(FilteredStateSpaceModel):
     e = global_param(prior=BetaPrior(1, 1), transform="logit", rename="ρ")
     f = global_param(prior=LogNormalPrior(0, 1), transform="log")
 
-    def __init__(self, input_length, num_particles, resample, a=0.5, b=1., c=0.95, dtype=None, device=None):
+    def __init__(
+        self,
+        input_length,
+        num_particles,
+        resample,
+        a=0.5,
+        b=1.,
+        c=0.95,
+        dtype=None,
+        device=None,
+    ):
         super().__init__(
-            input_length=input_length, num_particles=num_particles, resample=resample, dtype=dtype, device=device
+            input_length=input_length,
+            num_particles=num_particles,
+            resample=resample,
+            dtype=dtype,
+            device=device,
         )
-        self.a, self.b, self.c = (torch.tensor(x, dtype=self.dtype, device=self.device) for x in  (a, b, c))
+        self.a, self.b, self.c = (
+            torch.tensor(x, dtype=self.dtype, device=self.device) for x in (a, b, c)
+        )
 
     def simulate(self):
         """Simulate from p(x, z | θ)"""
         z_true = torch.empty((self.input_length,), dtype=self.dtype, device=self.device)
         z_true[0] = Normal(self.b, (1 - self.c ** 2) ** (-.5)).sample()
         for t in range(1, self.input_length):
-            z_true[t] = self.b + self.c * z_true[t - 1] + torch.randn(1, dtype=self.dtype, device=self.device)
+            z_true[t] = (
+                self.b
+                + self.c * z_true[t - 1]
+                + torch.randn(1, dtype=self.dtype, device=self.device)
+            )
         x = Normal(0, torch.exp(self.a) * torch.exp(z_true / 2)).sample()
         return (
             x.type(self.dtype).to(self.device),

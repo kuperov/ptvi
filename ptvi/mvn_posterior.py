@@ -3,11 +3,7 @@ import os
 import pickle
 from typing import List
 import torch
-from torch.distributions import (
-    Distribution,
-    Normal,
-    TransformedDistribution,
-)
+from torch.distributions import Distribution, Normal, TransformedDistribution
 import pandas as pd
 import numpy as np
 from ptvi.params import TransformedModelParameter, LocalParameter
@@ -244,9 +240,7 @@ class MVNPosterior(object):
             plt.legend()
         if fc_steps > 0:
             plt.axvline(x=self.input_length, color="black")
-            plt.title(
-                f"Posterior credible interval and " f"{fc_steps}-step-ahead forecast"
-            )
+            plt.title(f"Posterior credible interval and {fc_steps}-step-ahead forecast")
         else:
             plt.title(f"Posterior credible interval")
 
