@@ -9,6 +9,9 @@ setup(
     packages=find_packages(),
     install_requires=["torch", "numpy", "pandas", "matplotlib", "click"],
     entry_points={
-        'console_scripts': ['sim-particle-filter=ptvi.models.filtered_sv_model:sim'],
+        'console_scripts': [
+            'sim-particle-filter=ptvi.models.filtered_sv_model:sim',
+            'stochvol=ptvi.experiments.stochvol:main'
+        ],
     }
 )
