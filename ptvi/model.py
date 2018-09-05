@@ -218,8 +218,7 @@ class FilteredStateSpaceModel(Model):
             if fc_steps > 0:
                 plt.axvline(x=self.input_length, color="black")
                 plt.title(
-                    f"Posterior credible interval and "
-                    f"{fc_steps}-step-ahead forecast"
+                    f"Posterior credible interval and {fc_steps}-step-ahead forecast"
                 )
             else:
                 plt.title(f"Posterior credible interval")
@@ -303,9 +302,14 @@ class FilteredStateSpaceModel(Model):
         if sample is not None:
             with torch.no_grad():
                 # samples should be M * T, where M is the number of samples
-                assert sample.shape[0] >= self.input_length
-                idxs = Categorical(torch.exp(log_w)).sample()
-                sample[: self.input_length] = Z[:, idxs]
+                # and we also need to resample so that the weights aren't needed anymore
+                idxs = Categorical(torch.exp(log_w)).sample((sample.shape[1],))
+                if sample.shape[0] >= self.input_length:
+                    sample[:self.input_length] = Z[:, idxs]
+                else:
+                    take_elems = min(sample.shape[0], self.input_length)
+                    start_at = self.input_length - take_elems
+                    sample[:] = Z[start_at:self.input_length, idxs]
         return log_phatN
 
     def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:
