@@ -1,34 +1,49 @@
-library(tidyverse)
-library(stochvol)
+if (!require('stochvol'))
+  install.packages('stochvol')
+if (!require('rjson'))
+  install.packages('rjson')
 
-# True parameters assumed to be a=1.0, b=0.0, c=0.95
-# Drawing 100 variates from p(y_T+1, z_T+1 | z_T, a, b, c) with data_seed=1
-# Stochastic volatility model:
-#   x_t = exp(a * z_t/2) ε_t      t=1, …, 100
-#   z_t = b + c * z_{t-1} + ν_t,  t=2, …, 100
-#   z_1 = b + 1/√(1 - c^2) ν_1
-#         where ε_t, ν_t ~ Ν(0,1)
-# 
-# Particle filter with 50 particles, AR(1) proposal:
-#   z_t = b + c * z_{t-1} + η_t,  t=2, …, 100
-#   z_1 = b + 1/√(1 - c^2) η_1
-#         where η_t ~ Ν(0,1)
 
-alldata <- read_csv('experiment.csv', 
-             col_types = cols(
-                t = col_integer(),
-                y = col_double(),
-                z = col_double()
-              )
-             )
+mcmc_SV <- function(experiment_file, outfile) {
+  library(stochvol)
+  library(rjson)
+  
+  experiment <- fromJSON(file = experiment_file)
+  set.seed(experiment$algo_seed)
 
-y <- alldata[1:100,][['y']]
+  fit <- svsample(experiment$y, designmatrix = 'ar1')
+  summary(fit, showlatent = FALSE)
+  #vp <- volplot(fit, forecast=10)
 
-fit <- svsample(y, designmatrix = 'ar1')
-summary(fit, showlatent = FALSE)
-volplot(fit, forecast=10)
-
-N <- 100
-
-# produce N forecasts
-
+  # produce N forecasts
+  N <- experiment$n
+  t <- experiment$t
+  draw_idxs <- sample(1:nrow(fit$para), size = N)
+  mus <- fit$para[draw_idxs,'mu']
+  phis <- fit$para[draw_idxs,'phi']
+  sigmas <- fit$para[draw_idxs,'sigma']
+  # project volatilities
+  z_Ts <- fit$latent[draw_idxs,t-1]
+  z_fcs <- rnorm(N, mean = mus + phis * (z_Ts - mus), sd = sigmas)
+  # associated y projection
+  y_fcs <- rnorm(N, 0, exp(z_fcs/2))
+  fc_dens <- density(y_fcs)
+  fc_pdf <- approxfun(fc_dens$x, fc_dens$y)  # interpolate kernel density pdf
+  
+  # we already have N samples from 1-step-ahead forecasts, sooo...
+  ys <- experiment$y_next
+  ds <- fc_pdf(ys)
+  log_scores <- log(ds[ds > 0])
+  log_score <- mean(log_scores, na.rm = TRUE)
+  
+  cat(sprintf('Log score = %.4f (sd = %.4f, N = %d)\n', 
+                log_score, sd(log_scores), N))
+  
+  summ <- list(summ = summary(fit),
+               log_scores = log_scores,
+               log_score = log_score,
+               y_fcs = y_fcs,
+               z_fcs = z_fcs)
+  write(toJSON(summ), file = outfile)
+  summ
+}

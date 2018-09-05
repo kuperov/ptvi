@@ -1,13 +1,19 @@
+import random
+import json
+import os
+from datetime import datetime
+from time import time
+import matplotlib
+matplotlib.use("Agg")  # must be before other graphics imports
+import matplotlib.pyplot as plt
 import click
 import pandas as pd
 import torch
-import random
 from torch.distributions import Normal
 from scipy import stats
 import numpy as np
 from ptvi import (
     FilteredStateSpaceModel,
-    FilteredStateSpaceModelFreeProposal,
     global_param,
     AR1Proposal,
     PFProposal,
@@ -127,7 +133,7 @@ class SVModel(FilteredStateSpaceModel):
     def __repr__(self):
         return (
             f"Stochastic volatility model with parameters {{a, b, c}}:\n"
-            f"\tx_t = exp(a * z_t/2) ε_t        t=1,…,{self.input_length}\n"
+            f"\ty_t = exp(a * z_t/2) ε_t        t=1,…,{self.input_length}\n"
             f"\tz_t = b + c * z_{{t-1}} + ν_t,    t=2,…,{self.input_length}\n"
             f"\tz_1 = b + 1/√(1 - c^2) ν_1\n"
             f"\twhere ε_t, ν_t ~ Ν(0,1)\n\n"
@@ -224,40 +230,43 @@ def generate(ctx, filename, t, a, b, c):
 
 
 @stochvol.command()
-@click.argument('filename')
+@click.argument('datafile')
 @click.argument('t', type=click.INT)
+@click.argument('outfile')
 @click.option("--N", default=100, help="Reps for estimating score")
 @click.option("--a", default=1., help="True a parameter value")
 @click.option("--b", default=0., help="True b parameter value")
 @click.option("--c", default=.95, help="True c parameter value")
 @click.option("--maxiters", default=1_000_000, help='Maximum iterations')
 @click.pass_context
-def conditional(ctx, filename, t, n, a, b, c, maxiters):
+def conditional(ctx, datafile, t, outfile, n, a, b, c, maxiters):
     """Forecast stoch vol model and compute log score, conditional on T observations.
 
     Example:
 
-        stochvol --data_seed=123 --algo_seed=123 conditional experiment.csv 200 \
-            --N=100 --a=1. --b=0. --c=0.95
+        stochvol --data_seed=123 --algo_seed=123 conditional experiment.csv 200 SV00200.json --N=100 --a=1. --b=0. --c=0.8
     """
     assert t > 1
+    start_date, start_time = str(datetime.today()), time()
     click.echo(_DIVIDER)
-    click.echo('Stochastic volatitlity model: conditional score estimation')
+    click.echo('Stochastic volatility model: conditional score estimation')
     click.echo(_DIVIDER)
     true_params = dict(a=a, b=b, c=c)
     algo_seed = ctx.obj['algo_seed']
     data_seed = ctx.obj['data_seed']
-    data = pd.read_csv(filename)
-    click.echo(f'Reading {t}/{len(data)} observations from {filename}.')
+    data = pd.read_csv(datafile)
+    click.echo(f'Started at: {start_date}')
+    click.echo(f'Reading {t}/{len(data)} observations from {datafile}.')
     click.echo(f'True parameters assumed to be a={a}, b={b}, c={c}')
 
     # draw N variates from p(y_T+1 | z_T+1, a, b, c)
     click.echo(f'Drawing {n} variates from p(y_T+1, z_T+1 | z_T, a, b, c) with '
-                f'data_seed={data_seed}')
+               f'data_seed={data_seed}')
     torch.manual_seed(data_seed)
     a, b, c = map(torch.tensor, (a, b, c))
     z_next = b + c * data['z'][t-1] + Normal(0, 1).sample((n,))
     y_next = Normal(0, torch.exp(a) * torch.exp(z_next / 2)).sample()
+    y_next_list = y_next.cpu().numpy().squeeze().tolist()  # for saving
 
     # perform inference
     y = data['y'][:t]
@@ -270,12 +279,60 @@ def conditional(ctx, filename, t, n, a, b, c, maxiters):
 
     click.echo(f'Generating {n} forecast draws from q...')
     # filter to get p(z_T | y, θ) then project z_{T+1}, z_{T+2}, ...
-    forecast = fit.forecast(steps=1)
+    forecast, fc_draws = fit.forecast(steps=1)
+    fc_draws_list = fc_draws.squeeze().tolist()
+
     scores = np.log(forecast.pdf(y_next))
     score = np.mean(scores)
     score_se = np.std(scores)
     click.echo(f'Forecast log score = {score:.4f} nats (sd = {score_se:.4f}, n = {n})')
-    click.echo('Done.')
+
+    click.echo(f'Writing results to {outfile} in JSON format.')
+    y_list = data['y'][:t].tolist()
+    z_list = data['z'][:t].tolist()
+    summary = {
+        'algo_seed': algo_seed, 'data_seed': data_seed, 'datafile': datafile, 't': t,
+        'outfile': outfile, 'fc_draws': fc_draws_list, 'score': score,
+        'score_se': score_se, 'n': n, 'y_next': y_next_list, 'start_date': start_date,
+        'elapsed': time() - start_time, 'true_params': true_params,
+        'full_length': len(data), 'max_iters': maxiters,
+        'inference_results': str(fit.summary()), 'y': y_list, 'z': z_list
+    }
+    with open(outfile, 'w', encoding="utf8") as ofilep:
+        json.dump(summary, ofilep, indent=4, sort_keys=True)
+
+    click.echo(f'Done in {time() - start_time:.1f} seconds.')
+    click.echo(_DIVIDER)
+
+
+@stochvol.command()
+@click.argument('jsonfile')
+@click.argument('outfile')
+@click.pass_context
+def mcmc(ctx, jsonfile, outfile):
+    """Forecasts SV model using MCMC procedure.
+
+    The JSONFILE parameter is the file produced by 'conditional'. Results are saved
+    to OUTFILE.
+
+    Example:
+
+        stochvol mcmc experiment.json results.json
+
+    """
+    import rpy2.robjects as robjects
+    start_date, start_time = str(datetime.today()), time()
+    scriptfile = os.path.join(os.path.dirname(__file__), 'stochvol.R')
+    with open(scriptfile, 'r') as content_file:
+        script = content_file.read()
+        robjects.r(script)
+    click.echo(_DIVIDER)
+    click.echo(f'MCMC stochastic volatility model')
+    click.echo(f'Started at: {start_date}')
+    click.echo(f'Reading {jsonfile} and writing to {outfile}')
+    mcmc = robjects.globalenv['mcmc_SV']
+    mcmc(jsonfile, outfile)
+    click.echo(f'Done in {time() - start_time:.1f} seconds.')
     click.echo(_DIVIDER)
 
 
