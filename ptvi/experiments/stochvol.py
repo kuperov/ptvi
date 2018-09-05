@@ -374,7 +374,7 @@ def compare(ctx, jsonfiles, pdffile):
     for fc, res in zip(fcs, results):
         lbl = f'{res["method"]} (log score = {res["score"]:.1f})'
         plt.plot(xs, fc.pdf(xs), label=lbl)
-    plt.title(f'Forecasts: T={results[0]["t"]}')
+    plt.title(f'SV Model Forecast Density (T={results[0]["t"]})')
     plt.legend()
     plt.tight_layout()
     plt.savefig(pdffile)
