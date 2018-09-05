@@ -100,6 +100,23 @@ class ModifiedBetaPrior(Prior):
         return f"2*Beta(α={float(self.α)}, β={float(self.β)})-1"
 
 
+class Chi2Prior(Prior):
+    """Chisquare prior."""
+
+    def __init__(self, df):
+        self.df = df
+
+    def to_distribution(
+        self, dtype: torch.dtype = torch.float32, device: torch.device = None
+    ):
+        _device = device or torch.device('cpu')
+        _df = torch.tensor(self.df, dtype=dtype).to(_device)
+        return torch.distributions.Chi2(df = _df)
+
+    def description(self):
+        return f"χ²(df={self.df})"
+
+
 class InvGammaPrior(Prior):
     """Inverse gamma prior distribution."""
 

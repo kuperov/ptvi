@@ -42,3 +42,9 @@ class TestPriors(unittest.TestCase):
         d = mbp.to_distribution()
         self.assertTrue(torch.allclose(torch.tensor([0.5,0.5,0.5]),
             torch.exp(d.log_prob(torch.tensor([-0.9,0.,0.9])))))
+
+    def test_chisquare(self):
+        chsq = Chi2Prior(df=1)
+        self.assertEqual(str(chsq), 'χ²(df=1)')
+        d = chsq.to_distribution()
+        self.assertIsInstance(d, torch.distributions.Chi2)
