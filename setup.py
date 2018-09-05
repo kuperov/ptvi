@@ -7,7 +7,7 @@ setup(
     version="0.2",
     description="VI for forecasting",
     packages=find_packages(),
-    install_requires=["torch", "numpy", "pandas", "matplotlib", "click"],
+    install_requires=["torch", "numpy", "pandas", "matplotlib", "click", 'scipy'],
     entry_points={
         'console_scripts': [
             'sim-particle-filter=ptvi.models.filtered_sv_model:sim',

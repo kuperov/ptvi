@@ -37,14 +37,18 @@ class TestPriors(unittest.TestCase):
 
     def test_modified_beta(self):
         mbp = ModifiedBetaPrior(1, 1)
-        self.assertEqual(str(mbp), '2*Beta(α=1.0, β=1.0)-1')
+        self.assertEqual(str(mbp), "2*Beta(α=1.0, β=1.0)-1")
         # should be the same as uniform (-1, 1)
         d = mbp.to_distribution()
-        self.assertTrue(torch.allclose(torch.tensor([0.5,0.5,0.5]),
-            torch.exp(d.log_prob(torch.tensor([-0.9,0.,0.9])))))
+        self.assertTrue(
+            torch.allclose(
+                torch.tensor([0.5, 0.5, 0.5]),
+                torch.exp(d.log_prob(torch.tensor([-0.9, 0., 0.9]))),
+            )
+        )
 
     def test_chisquare(self):
         chsq = Chi2Prior(df=1)
-        self.assertEqual(str(chsq), 'χ²(df=1)')
+        self.assertEqual(str(chsq), "χ²(df=1)")
         d = chsq.to_distribution()
         self.assertIsInstance(d, torch.distributions.Chi2)

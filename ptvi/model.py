@@ -305,11 +305,11 @@ class FilteredStateSpaceModel(Model):
                 # and we also need to resample so that the weights aren't needed anymore
                 idxs = Categorical(torch.exp(log_w)).sample((sample.shape[1],))
                 if sample.shape[0] >= self.input_length:
-                    sample[:self.input_length] = Z[:, idxs]
+                    sample[: self.input_length] = Z[:, idxs]
                 else:
                     take_elems = min(sample.shape[0], self.input_length)
                     start_at = self.input_length - take_elems
-                    sample[:] = Z[start_at:self.input_length, idxs]
+                    sample[:] = Z[start_at : self.input_length, idxs]
         return log_phatN
 
     def proposal_for(self, y: torch.Tensor, ζ: torch.Tensor) -> PFProposal:

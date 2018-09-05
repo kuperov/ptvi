@@ -94,7 +94,8 @@ class ModifiedBetaPrior(Prior):
         _β = torch.tensor(self.β, dtype=dtype).to(_device)
         return torch.distributions.TransformedDistribution(
             torch.distributions.Beta(_α, _β),
-            torch.distributions.AffineTransform(loc=-1., scale=2.))
+            torch.distributions.AffineTransform(loc=-1., scale=2.),
+        )
 
     def description(self):
         return f"2*Beta(α={float(self.α)}, β={float(self.β)})-1"
@@ -109,9 +110,9 @@ class Chi2Prior(Prior):
     def to_distribution(
         self, dtype: torch.dtype = torch.float32, device: torch.device = None
     ):
-        _device = device or torch.device('cpu')
+        _device = device or torch.device("cpu")
         _df = torch.tensor(self.df, dtype=dtype).to(_device)
-        return torch.distributions.Chi2(df = _df)
+        return torch.distributions.Chi2(df=_df)
 
     def description(self):
         return f"χ²(df={self.df})"
