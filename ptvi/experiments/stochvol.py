@@ -282,7 +282,8 @@ def conditional(ctx, datafile, t, outfile, n, a, b, c, maxiters):
     forecast, fc_draws = fit.forecast(steps=1)
     fc_draws_list = fc_draws.squeeze().tolist()
 
-    scores = np.log(forecast.pdf(y_next))
+    dens = forecast.pdf(y_next)
+    scores = np.log(dens[dens > 0])
     score = np.mean(scores)
     score_se = np.std(scores)
     click.echo(f'Forecast log score = {score:.4f} nats (sd = {score_se:.4f}, n = {n})')
@@ -291,6 +292,7 @@ def conditional(ctx, datafile, t, outfile, n, a, b, c, maxiters):
     y_list = data['y'][:t].tolist()
     z_list = data['z'][:t].tolist()
     summary = {
+        'method': 'VSMC',
         'algo_seed': algo_seed, 'data_seed': data_seed, 'datafile': datafile, 't': t,
         'outfile': outfile, 'fc_draws': fc_draws_list, 'score': score,
         'score_se': score_se, 'n': n, 'y_next': y_next_list, 'start_date': start_date,
@@ -336,11 +338,33 @@ def mcmc(ctx, jsonfile, outfile):
     click.echo(_DIVIDER)
 
 
+@stochvol.command()
+@click.argument('jsonfiles', nargs=-1)
+@click.argument('pdffile', nargs=1)
+@click.pass_context
+def compare(ctx, jsonfiles, pdffile):
+    results = []
+    for file in jsonfiles:
+        with open(file, 'r', encoding='utf-8') as fp:
+            results.append(json.load(fp))
+    fcs = [stats.gaussian_kde(r['fc_draws']) for r in results]
+    # simulate to figure out range of plot
+    rord = np.concatenate([fc.resample(50) for fc in fcs])
+    range = (rord.min(), rord.max())
+    # plot densities
+    xs = np.linspace(*range, num=1000)
+    for fc, res in zip(fcs, results):
+        lbl = f'{res["method"]} (log score = {res["score"]:.2f})'
+        plt.plot(xs, fc.pdf(xs), label=lbl)
+    plt.title(f'Forecasts: T={res[0]["t"]}')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(pdffile)
+
+
 def main():
     stochvol(obj={})
 
 
 if __name__=='__main__':
-    # ctx = {'obj': {'model_seed': 1, 'data_seed': 1}}
-    # conditional(ctx, filename='experiment.csv', t=200, n=100, a=1., b=0., c=0.95, maxiters=50)
     main()

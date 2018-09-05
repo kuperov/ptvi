@@ -39,11 +39,14 @@ mcmc_SV <- function(experiment_file, outfile) {
   cat(sprintf('Log score = %.4f (sd = %.4f, N = %d)\n', 
                 log_score, sd(log_scores), N))
   
-  summ <- list(summ = summary(fit),
-               log_scores = log_scores,
-               log_score = log_score,
-               y_fcs = y_fcs,
-               z_fcs = z_fcs)
+  summ <- list(method = 'MCMC',
+               summ = summary(fit),
+               scores = log_scores,
+               score = log_score,
+               fc_draws = y_fcs,
+               z_fcs = z_fcs,
+               t = t,
+               N = N)
   write(toJSON(summ), file = outfile)
   summ
 }
