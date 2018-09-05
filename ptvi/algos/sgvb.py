@@ -502,8 +502,7 @@ def sgvb_and_stoch_opt(
         qprint("WARNING: maximum iterations reached.")
     t += time()
     qprint(
-        f"{i: 8d}. smoothed model elbo ={float(-smoothed_model_objective):8.2f}, "
-        f"proposal elbo ={float(-smoothed_proposal_objective):8.2f}\n"
+        f"{i: 8d}. smoothed model elbo ={float(-smoothed_model_objective):8.2f}\n"
         f"Completed {i+1} iterations in {t:.1f}s @ {(i+1)/(t+1e-10):.2f} i/s.\n"
         f"{_DIVIDER}"
     )
