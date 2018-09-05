@@ -80,6 +80,26 @@ class BetaPrior(Prior):
         return f"Beta(α={float(self.α)}, β={float(self.β)})"
 
 
+class ModifiedBetaPrior(Prior):
+    """Beta prior distribution, modified to lie between -1 and 1."""
+
+    def __init__(self, α, β):
+        self.α, self.β = α, β
+
+    def to_distribution(
+        self, dtype: torch.dtype = torch.float32, device: torch.device = None
+    ):
+        _device = device or torch.device("cpu")
+        _α = torch.tensor(self.α, dtype=dtype).to(_device)
+        _β = torch.tensor(self.β, dtype=dtype).to(_device)
+        return torch.distributions.TransformedDistribution(
+            torch.distributions.Beta(_α, _β),
+            torch.distributions.AffineTransform(loc=-1., scale=2.))
+
+    def description(self):
+        return f"2*Beta(α={float(self.α)}, β={float(self.β)})-1"
+
+
 class InvGammaPrior(Prior):
     """Inverse gamma prior distribution."""
 

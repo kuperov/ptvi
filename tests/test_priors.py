@@ -34,3 +34,11 @@ class TestPriors(unittest.TestCase):
         bp = BetaPrior(2, 3)
         self.assertEqual(str(bp), "Beta(α=2.0, β=3.0)")
         self.assertIsInstance(bp.to_distribution(), Beta)
+
+    def test_modified_beta(self):
+        mbp = ModifiedBetaPrior(1, 1)
+        self.assertEqual(str(mbp), '2*Beta(α=1.0, β=1.0)-1')
+        # should be the same as uniform (-1, 1)
+        d = mbp.to_distribution()
+        self.assertTrue(torch.allclose(torch.tensor([0.5,0.5,0.5]),
+            torch.exp(d.log_prob(torch.tensor([-0.9,0.,0.9])))))
