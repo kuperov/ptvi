@@ -2,5 +2,6 @@
 
 Routines for implementing VI for time series models.
 
-This is research code that is very unlikely to be correct. Don't use it. No, really, don't use
-this code. You have been warned.
+This is research code. It is likely full of glitches, bugs, and bad puns.
+If you rely on it you will probably come to regret it. No, really, don't
+use this code. You have been warned.
