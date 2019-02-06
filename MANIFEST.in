@@ -1,2 +1,1 @@
-include ptvi/cavi/probit.stan
-include ptvi/cavi/bayesian_reg.stan
+recursive-include ptvi *.stan

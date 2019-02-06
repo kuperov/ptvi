@@ -13,5 +13,6 @@ setup(
             'sim-particle-filter=ptvi.models.filtered_sv_model:sim',
             'stochvol=ptvi.experiments.stochvol:main'
         ],
-    }
+    },
+    include_package_data=True
 )
