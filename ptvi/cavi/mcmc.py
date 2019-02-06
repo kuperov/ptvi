@@ -19,7 +19,7 @@ def mcmc_summ(draws, names=None, true=None):
     """
     ndraws, k = draws.shape
     means = np.mean(draws, axis=0)
-    qs = np.quantile(draws, axis=0, q=[0.05, 0.25, 0.5, 0.75, 0.95])
+    qs = np.percentile(draws, axis=0, q=[5., 25., 50., 75., 95.])
     to_join = [np.expand_dims(means,0), qs]
     rows = names.copy() if names else [f'beta[{i}]' for i in range(k)]
     cols = ['Mean','5%','25%','50%','75%','95%']
