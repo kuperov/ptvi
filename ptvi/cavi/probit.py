@@ -71,9 +71,10 @@ def vi_probit(y, X, mu_beta=None, Sigma_beta=None, maxiter=1000, tol=1e-2):
             + mu_beta.T @ Sigma_beta_inv @ (mu_q_beta - 0.5 * mu_beta)
             + np.sum(np.log(np.where(y == 1, 1.0 - Phi, Phi)))
         )
-        print(f"{i+1:4d}. elbo: {elbo:.4f}, E[beta|y]: {str(mu_q_beta.round(2))}")
+        if not i % 10:
+            print(f"{i+1:4d}. elbo: {elbo:.4f}, E[beta|y]: {str(mu_q_beta.round(2))}")
         if old_elbo and elbo < old_elbo:
-            print(f"Bug warning: elbo decreased from {old_elbo:.4f} to {elbo:.4f}.")
+            print(f"{i+1:4d}. Bug warning: elbo decreased from {old_elbo:.4f} to {elbo:.4f}.")
         elif old_elbo and elbo < old_elbo + tol:
             elapsed_ms = 1e3 * (perf_counter() - start_time)
             print(f"Convergence achieved in {elapsed_ms:.4f} ms after {i+1} iterations.")
@@ -162,12 +163,10 @@ def stan_probit(y, X, mu_beta=None, Sigma_beta=None,
     import pystan
     N, k = X.shape
     assert y.shape == (N,)
-    XX = X.T @ X
-    Sigma_beta_inv = inv(Sigma_beta)
-    Sigma_q_beta = inv(XX + Sigma_beta_inv)
     stanfile = os.path.join(os.path.dirname(__file__), 'probit.stan')
     mdl = pystan.StanModel(file=stanfile)
-    data = {'N': N, 'k': k, 'y': y, 'X': X, 'mu_beta': mu_beta, 'Sigma_beta': Sigma_beta}
+    y_ = y.astype(int)
+    data = {'N': N, 'k': k, 'y': y_, 'X': X, 'mu_beta': mu_beta, 'Sigma_beta': Sigma_beta}
     start_t = perf_counter()
     fit = mdl.sampling(data=data, iter=warmup+num_draws//chains,
         warmup=warmup, chains=chains)
@@ -186,21 +185,3 @@ def log_joint(y, X, beta, a, mu_beta, Sigma_beta):
     # p(beta)
     lj += stats.multivariate_normal(mean=mu_beta, cov=Sigma_beta).logpdf(beta)
     return lj
-
-
-if __name__ == "__main__":
-    np.random.seed(123)
-    N, k = 500, 10
-    X = np.random.normal(size=[N, k])
-    mu_beta, Sigma_beta = np.zeros(k), np.eye(k)
-    beta0 = np.random.normal(size=k)
-    eta = X @ beta0
-    Phi = stats.norm().cdf
-    y = np.random.binomial(n=1, p=Phi(eta), size=N)
-    print(f"True beta = {beta0.round(2)}")
-    fit = vi_probit(y, X, maxiter=1000, mu_beta=mu_beta, Sigma_beta=Sigma_beta)
-    # check lj can be evaluated
-    q_beta, q_a = fit["q_beta"], fit["q_a"]
-    beta, a = q_beta.rvs(), q_a.rvs()
-    lj = log_joint(y, X, beta, a, mu_beta, Sigma_beta)
-
