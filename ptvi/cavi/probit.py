@@ -74,10 +74,14 @@ def vi_probit(y, X, mu_beta=None, Sigma_beta=None, maxiter=1000, tol=1e-2):
         if not i % 10:
             print(f"{i+1:4d}. elbo: {elbo:.4f}, E[beta|y]: {str(mu_q_beta.round(2))}")
         if old_elbo and elbo < old_elbo:
-            print(f"{i+1:4d}. Bug warning: elbo decreased from {old_elbo:.4f} to {elbo:.4f}.")
+            print(
+                f"{i+1:4d}. Bug warning: elbo decreased from {old_elbo:.4f} to {elbo:.4f}."
+            )
         elif old_elbo and elbo < old_elbo + tol:
             elapsed_ms = 1e3 * (perf_counter() - start_time)
-            print(f"Convergence achieved in {elapsed_ms:.4f} ms after {i+1} iterations.")
+            print(
+                f"Convergence achieved in {elapsed_ms:.4f} ms after {i+1} iterations."
+            )
             break
         old_elbo = elbo
     else:
@@ -103,11 +107,11 @@ def vi_probit(y, X, mu_beta=None, Sigma_beta=None, maxiter=1000, tol=1e-2):
         "mu_q_beta": mu_q_beta,
         "Sigma_q_beta": Sigma_q_beta,
         "mu_q_a": mu_q_a,
-        "q_y_hat": q_y_hat
+        "q_y_hat": q_y_hat,
     }
 
 
-def gibbs_probit(y, X, mu_beta=None, Sigma_beta=None, num_draws=10_000, warmup=1000):
+def gibbs_probit(y, X, mu_beta=None, Sigma_beta=None, num_draws=10000, warmup=1000):
     """Gibbs sampler for probit regression.
 
     Args:
@@ -142,8 +146,9 @@ def gibbs_probit(y, X, mu_beta=None, Sigma_beta=None, num_draws=10_000, warmup=1
     return draws[warmup:]
 
 
-def stan_probit(y, X, mu_beta=None, Sigma_beta=None, 
-    num_draws=10_000, chains=1, warmup=1000):
+def stan_probit(
+    y, X, mu_beta=None, Sigma_beta=None, num_draws=10000, chains=1, warmup=1000
+):
     """Gibbs sampler for probit regression.
 
     Args:
@@ -161,17 +166,26 @@ def stan_probit(y, X, mu_beta=None, Sigma_beta=None,
     # import pystan loaclly so if the environment is broken it doesn't
     # hose the entire module
     import pystan
+
     N, k = X.shape
     assert y.shape == (N,)
-    stanfile = os.path.join(os.path.dirname(__file__), 'probit.stan')
+    stanfile = os.path.join(os.path.dirname(__file__), "probit.stan")
     mdl = pystan.StanModel(file=stanfile)
     y_ = y.astype(int)
-    data = {'N': N, 'k': k, 'y': y_, 'X': X, 'mu_beta': mu_beta, 'Sigma_beta': Sigma_beta}
+    data = {
+        "N": N,
+        "k": k,
+        "y": y_,
+        "X": X,
+        "mu_beta": mu_beta,
+        "Sigma_beta": Sigma_beta,
+    }
     start_t = perf_counter()
-    fit = mdl.sampling(data=data, iter=warmup+num_draws//chains,
-        warmup=warmup, chains=chains)
+    fit = mdl.sampling(
+        data=data, iter=warmup + num_draws // chains, warmup=warmup, chains=chains
+    )
     end_t = perf_counter()
-    print(f'Time elapsed excl. compilation: {(end_t - start_t):.4f}s')
+    print(f"Time elapsed excl. compilation: {(end_t - start_t):.4f}s")
     return fit
 
 
