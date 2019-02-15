@@ -19,13 +19,14 @@ def mcmc_summ(draws, names=None, true=None):
     """
     ndraws, k = draws.shape
     means = np.mean(draws, axis=0)
-    qs = np.percentile(draws, axis=0, q=[5., 25., 50., 75., 95.])
-    to_join = [np.expand_dims(means,0), qs]
-    rows = names.copy() if names else [f'beta[{i}]' for i in range(k)]
-    cols = ['Mean','5%','25%','50%','75%','95%']
+    std = np.std(draws, axis=0)
+    qs = np.percentile(draws, axis=0, q=[5.0, 25.0, 50.0, 75.0, 95.0])
+    to_join = [np.expand_dims(means, 0), np.expand_dims(std, 0), qs]
+    rows = names.copy() if names else [f"beta[{i}]" for i in range(k)]
+    cols = ["Mean", "SD", "5%", "25%", "50%", "75%", "95%"]
     if true is not None:
-        to_join.insert(1, np.expand_dims(true,0))
-        cols.insert(1, 'True')
+        to_join.insert(1, np.expand_dims(true, 0))
+        cols.insert(1, "True")
     res = np.concatenate(to_join, axis=0).T
     frame = pd.DataFrame(res, index=rows, columns=cols)
     return frame

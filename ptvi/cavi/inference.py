@@ -30,7 +30,7 @@ from scipy.special import loggamma
 
 # from https://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
 class suppress_stdout_stderr(object):
-    '''
+    """
     A context manager for doing a "deep suppression" of stdout and stderr in
     Python, i.e. will suppress all print, even if the print originates in a
     compiled C/Fortran sub-function.
@@ -38,7 +38,8 @@ class suppress_stdout_stderr(object):
     to stderr just before a script exits, and after the context manager has
     exited (at least, I think that is why it lets exceptions through).
 
-    '''
+    """
+
     def __init__(self):
         # Open a pair of null files
         self.null_fds = [os.open(os.devnull, os.O_RDWR) for x in range(2)]
@@ -69,16 +70,18 @@ def _get_stan_model():
     stan_file = path.join(path.dirname(__file__), "bayesian_reg.stan")
     pickle_file = path.join(path.dirname(__file__), "bayesian_reg.stan.pkl")
     if os.path.isfile(pickle_file):
-        with open(pickle_file, 'rb') as fp:
+        with open(pickle_file, "rb") as fp:
             sm = pickle.load(fp)
     else:
-        sm = ps.StanModel(file=stan_file, model_name='bayes_reg')
-        with open(pickle_file, 'wb') as fp:
+        sm = ps.StanModel(file=stan_file, model_name="bayes_reg")
+        with open(pickle_file, "wb") as fp:
             pickle.dump(sm, fp)
     return sm
 
 
-def stan_reg(y, X, a_0, b_0, c_0, d_0, warmup=1_000, draws=1_000, chains=4, verbose=False):
+def stan_reg(
+    y, X, a_0, b_0, c_0, d_0, warmup=1000, draws=1000, chains=4, verbose=False
+):
     """Use NUTS to draw from posterior for simple hierarchical model
 
     Model is Drugowitsch's non-ARD VB model in https://arxiv.org/abs/1310.5438.
@@ -101,16 +104,18 @@ def stan_reg(y, X, a_0, b_0, c_0, d_0, warmup=1_000, draws=1_000, chains=4, verb
     dat = dict(y=y, X=X, a_0=a_0, b_0=b_0, c_0=c_0, d_0=d_0, N=N, k=k)
     start_t = time.perf_counter_ns()
     with suppress_stdout_stderr():
-        fit = model.sampling(data=dat, iter=draws+warmup, warmup=warmup, chains=chains)
+        fit = model.sampling(
+            data=dat, iter=draws + warmup, warmup=warmup, chains=chains
+        )
     elapsed_ms = 1e-6 * (time.perf_counter_ns() - start_t)
     if verbose:
-        print(f'Sampling (ex compilation) completed in {elapsed_ms:.2f} ms.')
+        print(f"Sampling (ex compilation) completed in {elapsed_ms:.2f} ms.")
     return fit
 
 
 def _gibbs_onechain(args):
-    y, X, draws, warmup, = args['y'], args['X'], args['draws'], args['warmup']
-    a_0, b_0, c_0, d_0 = args['a_0'], args['b_0'], args['c_0'], args['d_0']
+    y, X, draws, warmup, = args["y"], args["X"], args["draws"], args["warmup"]
+    a_0, b_0, c_0, d_0 = args["a_0"], args["b_0"], args["c_0"], args["d_0"]
     N, k, = X.shape
     assert len(y) == N
     XX, I = X.T @ X, np.eye(k)
@@ -122,9 +127,9 @@ def _gibbs_onechain(args):
         β_ = Φ(mean=β_hat, cov=R / τ_, allow_singular=True).rvs()
         e = y - X @ β_
         τ_ = Γ(
-            a=0.5 * (N + k) + a_0, scale=2. / (e.T @ e + α_ * β_.T @ β_ + 2 * b_0)
+            a=0.5 * (N + k) + a_0, scale=2.0 / (e.T @ e + α_ * β_.T @ β_ + 2 * b_0)
         ).rvs()
-        α_ = Γ(a=0.5 * k + c_0, scale=2. / (τ_ * β_.T @ β_ + d_0)).rvs()
+        α_ = Γ(a=0.5 * k + c_0, scale=2.0 / (τ_ * β_.T @ β_ + d_0)).rvs()
         if i >= 0:
             β[i, :], τ[i], α[i] = β_, τ_, α_
     return β, τ, α
@@ -147,14 +152,30 @@ def gibbs_reg(y, X, warmup, draws, chains, a_0, b_0, c_0, d_0):
     Returns:
         tuple (β, τ, α) of vectors of draws
     """
-    args = dict(y=y, X=X, warmup=warmup, draws=draws, a_0=a_0, b_0=b_0, c_0=c_0, d_0=d_0)
+    args = dict(
+        y=y, X=X, warmup=warmup, draws=draws, a_0=a_0, b_0=b_0, c_0=c_0, d_0=d_0
+    )
     with Pool(chains) as p:
         results = p.map(_gibbs_onechain, [args] * chains)
-    combo = tuple(np.concatenate([results[i][j] for i in range(chains)]) for j in range(3))
+    combo = tuple(
+        np.concatenate([results[i][j] for i in range(chains)]) for j in range(3)
+    )
     return combo
 
 
-def reg_mcmc(y, X, draws=1_000, warmup=1_000, chains=4, a_0=2, b_0=0.5, c_0=2, d_0=0.5, verbose=True, method="Gibbs"):
+def reg_mcmc(
+    y,
+    X,
+    draws=1000,
+    warmup=1000,
+    chains=4,
+    a_0=2,
+    b_0=0.5,
+    c_0=2,
+    d_0=0.5,
+    verbose=True,
+    method="Gibbs",
+):
     """Use Gibbs sampling to draw from posterior for simple hierarchical model
 
     Model is Drugowitsch's non-ARD LR model in https://arxiv.org/abs/1310.5438.
@@ -172,20 +193,30 @@ def reg_mcmc(y, X, draws=1_000, warmup=1_000, chains=4, a_0=2, b_0=0.5, c_0=2, d
     """
     if method == "Gibbs":
         t = time.perf_counter()
-        βs, τs, αs = gibbs_reg(warmup=warmup, draws=draws, chains=4, y=y, X=X, a_0=a_0, b_0=b_0, c_0=c_0, d_0=d_0)
+        βs, τs, αs = gibbs_reg(
+            warmup=warmup,
+            draws=draws,
+            chains=4,
+            y=y,
+            X=X,
+            a_0=a_0,
+            b_0=b_0,
+            c_0=c_0,
+            d_0=d_0,
+        )
         t = 1e3 * (time.perf_counter() - t)
     elif method == "NUTS":
         t = time.perf_counter_ns()
         fit = stan_reg(y, X, a_0, b_0, c_0, d_0, warmup, draws, 4, verbose=verbose)
         t = 1e-6 * (time.perf_counter_ns() - t)
         samples = fit.extract()
-        βs, τs, αs = samples['beta'], samples['tau'], samples['alpha']
+        βs, τs, αs = samples["beta"], samples["tau"], samples["alpha"]
     else:
         raise Exception(f"Invalid method {method}.")
     if verbose:
         bmsd = [
-            f"{m:.2f} ({s:.2f})" for m, s in
-            zip(np.mean(βs, axis=0), np.std(βs, axis=0))
+            f"{m:.2f} ({s:.2f})"
+            for m, s in zip(np.mean(βs, axis=0), np.std(βs, axis=0))
         ]
         out_lines = [
             " " * 10 + "Summary of Marginals",
@@ -194,8 +225,9 @@ def reg_mcmc(y, X, draws=1_000, warmup=1_000, chains=4, a_0=2, b_0=0.5, c_0=2, d
             f"α:  {np.mean(αs):.2f} ({np.std(αs):.2f})",
             f"τ:  {np.mean(τs):.2f} ({np.std(τs):.2f})",
             "=" * 50,
-            f"Sampled {draws} draws after {warmup} warmup. Total time {t:.3f} ms.", ]
-        print('\n'.join(out_lines))
+            f"Sampled {draws} draws after {warmup} warmup. Total time {t:.3f} ms.",
+        ]
+        print("\n".join(out_lines))
     return βs, τs, αs
 
 
@@ -217,15 +249,15 @@ def arp_mcmc(y, p, method="Gibbs", **kwargs):
     assert method in ["Gibbs", "NUTS"]
     N = len(y) - p
     _y = y[p:]  # first p obs unusable in model
-    _X = np.empty([N, p+1])
+    _X = np.empty([N, p + 1])
     _X[:, 0] = 1
     for i in range(p):
-        _X[:, i+1] = y[p-i-1:N+p-i-1]
+        _X[:, i + 1] = y[p - i - 1 : N + p - i - 1]
     βs, τs, αs = reg_mcmc(y=_y, X=_X, **kwargs, method=method)
     return βs, τs, αs
 
 
-def arp_mcmc_forecast(y, p, steps, draws=1_000, **kwargs):
+def arp_mcmc_forecast(y, p, steps, draws=1000, **kwargs):
     """Forecast an AR(p) `steps` using MCMC to fit model.
 
     Note: supply keyword kwargs for priors, warmup, etc. needed by arp_mcmc().
@@ -244,13 +276,15 @@ def arp_mcmc_forecast(y, p, steps, draws=1_000, **kwargs):
     """
     N = len(y)
     βs, τs, _ = arp_mcmc(y=y, p=p, draws=draws, **kwargs)
-    res = {s: np.empty([draws]) for s in range(N, N+steps)}
+    res = {s: np.empty([draws]) for s in range(N, N + steps)}
     y_ext = np.r_[y, np.empty([steps])]  # for storing explanatory variables
     for i in range(draws):
         β, τ = βs[i, :], τs[i]
-        for s in range(N, N+steps):
-            x = np.r_[1, y_ext[s-1:s-p-1:-1]]  # constant and p lagged values
-            y_dist = stats.norm(loc=x.T@β, scale=1/np.sqrt(τ))  # p(y_s | β, τ, y_{1:s-1})
+        for s in range(N, N + steps):
+            x = np.r_[1, y_ext[s - 1 : s - p - 1 : -1]]  # constant and p lagged values
+            y_dist = stats.norm(
+                loc=x.T @ β, scale=1 / np.sqrt(τ)
+            )  # p(y_s | β, τ, y_{1:s-1})
             y_ext[s] = y_dist.rvs(size=1)
             res[s][i] = y_ext[s]
     return res
@@ -284,7 +318,7 @@ class multi_t(stats.rv_continuous):
         x = stats.wishart(df=self.ν).rvs()
         z = stats.multivariate_normal(mean=np.zeros(self.D), cov=np.eye(self.D)).rvs()
         A = chol(inv(self.Λ))
-        return self.μ + A@z*sqrt(self.ν/x)
+        return self.μ + A @ z * sqrt(self.ν / x)
 
 
 def vb_reg(y, X, a_0, b_0, c_0, d_0, maxiter=1000, tol=1e-4, verbose=False):
@@ -308,7 +342,7 @@ def vb_reg(y, X, a_0, b_0, c_0, d_0, maxiter=1000, tol=1e-4, verbose=False):
     N, D = X.shape
     assert len(y) == N
     if verbose:
-        print(f'Coordinate ascent on {N} observations.')
+        print(f"Coordinate ascent on {N} observations.")
     Vinv_N, V_N, a_N, b_N, w_N = None, None, None, None, None
     a_N, c_N, d_N = a_0 + 0.5 * N, c_0 + 0.5 * D, d_0
     L, i = -np.inf, 1
@@ -356,11 +390,11 @@ def vb_reg(y, X, a_0, b_0, c_0, d_0, maxiter=1000, tol=1e-4, verbose=False):
     def predictive(x):
         """Return variational predictive distribution for y given x."""
         λ = (1 + x.T @ V_N @ x).inv() * a_N / b_N
-        return stats.t(loc=w_N @ x, scale=λ ** (-.5), df=2 * a_N)
+        return stats.t(loc=w_N @ x, scale=λ ** (-0.5), df=2 * a_N)
 
     return {
-        "q_α": stats.gamma(c_N, scale=1./d_N),
-        "q_τ_marg": stats.gamma(a_N, scale=1./b_N),
+        "q_α": stats.gamma(c_N, scale=1.0 / d_N),
+        "q_τ_marg": stats.gamma(a_N, scale=1.0 / b_N),
         "q_w_marg": multi_t(μ=w_N, Λ=Vinv_N, ν=2 * a_N),
         "Vinv_N": Vinv_N,
         "V_N": V_N,
@@ -392,14 +426,14 @@ def arp_vb(y, p, **kwargs):
     """
     N = len(y) - p
     _y = y[p:]  # first p obs unusable in model
-    _X = np.empty([N, p+1])
+    _X = np.empty([N, p + 1])
     _X[:, 0] = 1
     for i in range(p):
-        _X[:, i+1] = y[p-i-1:N+p-i-1]
+        _X[:, i + 1] = y[p - i - 1 : N + p - i - 1]
     return vb_reg(y=_y, X=_X, **kwargs)
 
 
-def arp_vb_forecast(y, p, steps, draws=1_000, **kwargs):
+def arp_vb_forecast(y, p, steps, draws=1000, **kwargs):
     """Forecast an AR(p) `steps` using VB to fit model.
 
     Note: supply keyword args needed by arp_vb().
@@ -419,15 +453,17 @@ def arp_vb_forecast(y, p, steps, draws=1_000, **kwargs):
     N = len(y)
     post = arp_vb(y=y, p=p, **kwargs)
     w_N, V_N = post["w_N"], post["V_N"]
-    res = {s: np.empty([draws]) for s in range(N, N+steps)}
+    res = {s: np.empty([draws]) for s in range(N, N + steps)}
     y_ext = np.r_[y, np.empty([steps])]  # for storing explanatory variables
     for i in range(draws):
-        α, τ = post["q_α"].rvs(), post['q_τ_marg'].rvs()
+        α, τ = post["q_α"].rvs(), post["q_τ_marg"].rvs()
         # τ = stats.gamma(post['a_N'], scale=1./post['b_N']).rvs()
-        β = Φ(mean=w_N, cov=V_N/τ).rvs()  # int(gamma * normal) = student t
-        for s in range(N, N+steps):
-            x = np.r_[1, y_ext[s-1:s-p-1:-1]]  # constant and p lagged values
-            y_dist = stats.norm(loc=x.T@β, scale=1/np.sqrt(τ))  # p(y_s | β, τ, y_{1:s-1})
+        β = Φ(mean=w_N, cov=V_N / τ).rvs()  # int(gamma * normal) = student t
+        for s in range(N, N + steps):
+            x = np.r_[1, y_ext[s - 1 : s - p - 1 : -1]]  # constant and p lagged values
+            y_dist = stats.norm(
+                loc=x.T @ β, scale=1 / np.sqrt(τ)
+            )  # p(y_s | β, τ, y_{1:s-1})
             y_ext[s] = y_dist.rvs(size=1)
             res[s][i] = y_ext[s]
     return res
