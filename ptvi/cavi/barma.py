@@ -7,6 +7,7 @@ from .logistic import logit, r_trunc_logistic_sim, l_trunc_logistic_sim
 from scipy import stats
 
 from ptvi.cavi import probit
+from ptvi.mvn_posterior import MVNPosterior
 
 
 def logit_barma_gibbs(y, X, p, q, ndraws=10000, warmup=1000):
@@ -103,7 +104,7 @@ def bar_design_matrix(y, X, p):
         y, (N-p)*(p+k) design matrix
     """
     y_lags = np.stack([y[p - i - 1 : -i - 1] for i in range(p)], axis=0).T
-    X_ = np.block([X[p:,], y_lags])
+    X_ = np.block([X[p:, ], y_lags])
     y_ = y[p:]
     return (y_, X_)
 
@@ -120,7 +121,7 @@ def combine_bar_priors(mu_beta, mu_phi, Sigma_beta, Sigma_phi):
     Returns:
         tuple: mu_both, Sigma_both
     """
-    p, k = len(mu_beta), len(mu_phi)
+    k, p = len(mu_beta), len(mu_phi)
     mu_both = np.r_[mu_beta, mu_phi]
     Sigma_both = np.block(
         [[Sigma_beta, np.zeros([k, p])], [np.zeros([p, k]), Sigma_phi]]
@@ -153,6 +154,8 @@ def binary_forecast(y, X, p, fits, steps=10, M=1000):
             # mcmc draws
             q_beta = None
             m = fits[l].shape[0]
+        elif isinstance(fits[l], MVNPosterior):
+            q_beta = fits[l].q
         else:
             # variational fit
             q_beta = fits[l]["q_beta"]
@@ -161,6 +164,8 @@ def binary_forecast(y, X, p, fits, steps=10, M=1000):
             # m draws, each conditioned on a single draw from q(beta,phi)
             if isinstance(fits[l], np.ndarray):
                 param = fits[l][j, :]
+            elif isinstance(fits[l], MVNPosterior):
+                param = q_beta.rsample().numpy()
             else:
                 param = q_beta.rvs()
             beta, phi = param[:k], param[k:]
@@ -170,8 +175,8 @@ def binary_forecast(y, X, p, fits, steps=10, M=1000):
                     if i - j - 1 >= 0:
                         eta += y_ext[i - j - 1] * phi[j]
                     y_ext[i] = np.random.binomial(n=1, p=Phi(eta), size=1)
-            fc_total[l,] += y_ext[-steps:]
-        fc_total[l,] /= m
+            fc_total[l, ] += y_ext[-steps:]
+        fc_total[l, ] /= m
     return fc_total
 
 
@@ -181,6 +186,7 @@ def score_binary_forecast(y, X, p, beta0, phi0, fcs, labs, M=1000):
     The forecasts should be 1-dimensional vectors of length `steps`.
 
     To ensure results are reproducible, be sure to set the seed before calling this method.
+    (Note: numpy AND pytorch seed!)
 
     Args:
         y:      observed data
@@ -210,7 +216,10 @@ def score_binary_forecast(y, X, p, beta0, phi0, fcs, labs, M=1000):
         else:
             x = np.r_[1.0]
         for i in range(N, N + steps):
-            eta = x @ beta0
+            if len(beta0) == 1:
+                eta = beta0
+            else:
+                eta = x @ beta0
             for k in range(p):
                 if i - k - 1 >= 0:
                     eta += y_ext[i - k] * phi0[k]
