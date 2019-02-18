@@ -52,8 +52,9 @@ def sgvb(
     u0 = torch.tensor(u0) if u0 is not None else torch.zeros(model.d)
     L0 = torch.tensor(L0) if L0 is not None else torch.eye(model.d)
 
-    u = torch.tensor(u0, requires_grad=True, dtype=model.dtype, device=model.device)
-    L = torch.tensor(L0, requires_grad=True, dtype=model.dtype, device=model.device)
+    # this dance seems to be necessary to silence ugly torch warnings
+    u = torch.empty_like(u0, device=model.device, dtype=model.dtype).copy_(u0).requires_grad_(True)
+    L = torch.empty_like(L0, device=model.device, dtype=model.dtype).copy_(L0).requires_grad_(True)
 
     optimizer = (optimizer_type or Adadelta)([u, L], **opt_params)
 
