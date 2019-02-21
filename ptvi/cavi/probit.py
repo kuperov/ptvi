@@ -149,7 +149,7 @@ def gibbs_probit(y, X, mu_beta=None, Sigma_beta=None, num_draws=10000, warmup=10
 def stan_probit(
     y, X, mu_beta=None, Sigma_beta=None, num_draws=10000, chains=1, warmup=1000
 ):
-    """Gibbs sampler for probit regression.
+    """NUTS sampler for probit regression implemented in Stan.
 
     Args:
         y:          binary response variable (n-array-like of 1 and 0s)
@@ -163,7 +163,7 @@ def stan_probit(
     Returns:
         array of draws of beta
     """
-    # import pystan loaclly so if the environment is broken it doesn't
+    # import pystan locally so if the environment is broken it doesn't
     # hose the entire module
     import pystan
 

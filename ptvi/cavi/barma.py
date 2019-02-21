@@ -104,7 +104,7 @@ def bar_design_matrix(y, X, p):
         y, (N-p)*(p+k) design matrix
     """
     y_lags = np.stack([y[p - i - 1 : -i - 1] for i in range(p)], axis=0).T
-    X_ = np.block([X[p:, ], y_lags])
+    X_ = np.block([X[p:,], y_lags])
     y_ = y[p:]
     return (y_, X_)
 
@@ -175,8 +175,8 @@ def binary_forecast(y, X, p, fits, steps=10, M=1000):
                     if i - j - 1 >= 0:
                         eta += y_ext[i - j - 1] * phi[j]
                     y_ext[i] = np.random.binomial(n=1, p=Phi(eta), size=1)
-            fc_total[l, ] += y_ext[-steps:]
-        fc_total[l, ] /= m
+            fc_total[l,] += y_ext[-steps:]
+        fc_total[l,] /= m
     return fc_total
 
 
