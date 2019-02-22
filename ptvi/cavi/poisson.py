@@ -10,7 +10,8 @@ from scipy import stats, special
 
 # from sklearn.decomposition import TruncatedSVD  # <-- TODO: optimize with random SVD
 import time
-import os
+
+from ptvi.cavi.stanutil import cache_stan_model
 
 
 def simulate(N, beta0, X=None):
@@ -105,7 +106,7 @@ def poisson_vi_reg(y, A, mu_0, C_0, tol=1e-10, maxiter=1000):
     return {"elbo": elbo, "C": C, "x_bar": x_bar}
 
 
-def poisson_stan_reg(y, X, mu_0, C_0, num_draws=10000, chains=1, warmup=1000):
+def poisson_stan_reg(y, X, mu_0, C_0, num_draws=10_000, chains=1, warmup=1_000):
     """Fit a poisson regression using NUTS implemented with Stan.
 
     Args:
@@ -120,14 +121,9 @@ def poisson_stan_reg(y, X, mu_0, C_0, num_draws=10000, chains=1, warmup=1000):
     Return:
         ndarray of mcmc draws, with params over dimension 0
     """
-    # import pystan locally so if the environment is broken it doesn't
-    # hose the entire module
-    import pystan
-
     N, k = X.shape
     assert y.shape == (N,)
-    stanfile = os.path.join(os.path.dirname(__file__), "poisson.stan")
-    mdl = pystan.StanModel(file=stanfile)
+    mdl = cache_stan_model("poisson.stan")
     y_ = y.astype(int)
     data = {"N": N, "k": k, "y": y_, "X": X, "mu_beta": mu_0, "Sigma_beta": C_0}
     start_t = time.perf_counter()

@@ -2,7 +2,6 @@
 """
 
 from time import perf_counter
-import os
 
 import numpy as np
 from numpy.linalg import inv
@@ -10,6 +9,7 @@ from scipy import stats
 from scipy.stats import multivariate_normal as mvn
 
 from ptvi.cavi.tnorm import tnorm
+from ptvi.cavi.stanutil import cache_stan_model
 
 
 def logdet(x):
@@ -163,14 +163,9 @@ def stan_probit(
     Returns:
         array of draws of beta
     """
-    # import pystan locally so if the environment is broken it doesn't
-    # hose the entire module
-    import pystan
-
     N, k = X.shape
     assert y.shape == (N,)
-    stanfile = os.path.join(os.path.dirname(__file__), "probit.stan")
-    mdl = pystan.StanModel(file=stanfile)
+    mdl = cache_stan_model('probit.stan')
     y_ = y.astype(int)
     data = {
         "N": N,

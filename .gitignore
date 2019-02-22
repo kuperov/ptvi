@@ -12,3 +12,4 @@ sparse_vi/__pycache__
 ptvi.egg-info
 .eggs 
 .vscode
+**/*.pkl

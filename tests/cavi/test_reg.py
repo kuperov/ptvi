@@ -2,7 +2,6 @@ import unittest
 
 from scipy import stats
 import numpy as np
-import timeit
 
 import statsmodels.api as sm
 from statsmodels.tsa.arima_process import ArmaProcess
@@ -31,7 +30,7 @@ def _gen_ar2(do_fit=True):
     return y, fit
 
 
-class TestRegression(unittest.TestCase):
+class TestReg(unittest.TestCase):
     """Test MCMC routines by comparing them to the frequentist fits obtained by StatsModels."""
 
     def setUp(self):

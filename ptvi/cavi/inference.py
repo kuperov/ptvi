@@ -13,19 +13,18 @@ Refs:
   [3] https://arxiv.org/abs/1310.5438
 """
 import os
-import pickle
 from warnings import warn
 import time
 from multiprocessing import Pool
 
-import pystan as ps
-from os import path
 import numpy as np
 from numpy import log, sqrt, pi as π
 from numpy.linalg import pinv, cholesky as chol, inv, slogdet
 from scipy import stats
 from scipy.stats import multivariate_normal as Φ, gamma as Γ
 from scipy.special import loggamma
+
+from ptvi.cavi.stanutil import cache_stan_model
 
 
 # from https://stackoverflow.com/questions/11130156/suppress-stdout-stderr-print-from-python-functions
@@ -60,25 +59,6 @@ class suppress_stdout_stderr(object):
         os.close(self.null_fds[1])
 
 
-def _get_stan_model():
-    """Load and compile the Stan model.
-
-    This function can take a while the first time it is run. The returned model object
-    is reusable for multiple inference runs, including with different data and hyper-
-    parameters.
-    """
-    stan_file = path.join(path.dirname(__file__), "bayesian_reg.stan")
-    pickle_file = path.join(path.dirname(__file__), "bayesian_reg.stan.pkl")
-    if os.path.isfile(pickle_file):
-        with open(pickle_file, "rb") as fp:
-            sm = pickle.load(fp)
-    else:
-        sm = ps.StanModel(file=stan_file, model_name="bayes_reg")
-        with open(pickle_file, "wb") as fp:
-            pickle.dump(sm, fp)
-    return sm
-
-
 def stan_reg(
     y, X, a_0, b_0, c_0, d_0, warmup=1000, draws=1000, chains=4, verbose=False
 ):
@@ -98,7 +78,7 @@ def stan_reg(
     Returns:
         draws
     """
-    model = _get_stan_model()
+    model = cache_stan_model('bayesian_reg.stan')
     N, k = X.shape
     assert len(y) == N
     dat = dict(y=y, X=X, a_0=a_0, b_0=b_0, c_0=c_0, d_0=d_0, N=N, k=k)
