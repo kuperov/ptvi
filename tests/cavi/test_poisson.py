@@ -34,3 +34,12 @@ class TestPoisson(unittest.TestCase):
         draws = fit.extract('beta')['beta']
         means = np.mean(draws, axis=0)
         self.assertLess(np.linalg.norm(beta0 - means, 2), 2.0)
+
+    def testMHPoisson(self):
+        np.random.seed(123)
+        beta0 = np.r_[1.1, 2.2, 3.3, 4.4]
+        y, X = poisson.simulate(100, beta0)
+        mu_0, C_0 = np.zeros(4), np.eye(4)
+        draws = poisson.mh_reg(y, X, mu_0, C_0, warmup=400, num_draws=1_000)
+        means = np.mean(draws, axis=0)
+        self.assertLess(np.linalg.norm(beta0 - means, 2), 2.0)

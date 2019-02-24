@@ -152,7 +152,7 @@ def stan_reg(y, X, mu_0, C_0, num_draws=10_000, chains=1, warmup=1_000):
     return fit
 
 
-def mh_poisson(y, X, mu_0, C_0, num_draws=10_000, warmup=1_000, init_tune=1e-2):
+def mh_reg(y, X, mu_0, C_0, num_draws=10_000, warmup=1_000, init_tune=1e-2, autotune=True):
     """Fit a poisson regression using an adaptive Metropolis-Hastings algo.
 
     The Gaussian proposal density has covariance C_0 * tune. Tune is adjusted each
@@ -166,6 +166,7 @@ def mh_poisson(y, X, mu_0, C_0, num_draws=10_000, warmup=1_000, init_tune=1e-2):
         num_draws: number of posterior draws
         warmup:    number of warmup iterations
         init_tune: initial tuning parameter value
+        autotune:  if true, autotune during warmup
 
     Return:
         ndarray of mcmc draws, with params over dimension 0
@@ -189,10 +190,10 @@ def mh_poisson(y, X, mu_0, C_0, num_draws=10_000, warmup=1_000, init_tune=1e-2):
     for i in range(1, warmup + num_draws):
         in_warmup = (i <= warmup)
         # auto-tune so acceptance rate is near 0.23
-        if in_warmup and i > autotune_s + 1 and i % autotune_s == 0:
-            accept_rate = np.mean(np.where(draws[i - autotune_s:i, 0] != draws[i - autotune_s+1:i - 1, 0], 1, 0))
+        if autotune and in_warmup and i > autotune_s + 1 and i % autotune_s == 0:
+            accept_rate = np.mean(np.where(draws[i - autotune_s:i, 0] != draws[i - autotune_s - 1:i - 1, 0], 1, 0))
             old_tune = tune
-            tune += 5 * tune * (accept_rate - 0.23)
+            tune += tune * (accept_rate - 0.23)
             print(f'Warmup auto-tuning: accept rate = {100*accept_rate:.1f}%, adjusting tune: {old_tune:.6f} -> {tune:.6f}')
         new_proposal = mvn(beta, tune * C_0)
         beta_prop = proposal.rvs()
