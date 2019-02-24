@@ -1,6 +1,6 @@
 import unittest
 
-from ptvi.cavi.test_inference import _gen_ar2
+from tests.cavi.test_inference import _gen_ar2
 from ptvi.cavi.inference import arp_mcmc_forecast
 from ptvi.cavi.charts import *
 

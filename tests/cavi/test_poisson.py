@@ -21,7 +21,7 @@ class TestPoisson(unittest.TestCase):
         beta0 = np.r_[1.1, 2.2, 3.3, 4.4]
         y, X = poisson.simulate(100, beta0)
         mu_0, C_0 = np.zeros(4), np.eye(4)
-        fit = poisson.poisson_vi_reg(y, X, mu_0, C_0)
+        fit = poisson.vi_reg(y, X, mu_0, C_0)
         self.assertIsInstance(fit, dict)
         self.assertLess(np.linalg.norm(beta0 - fit['x_bar'], 2), 2.0)  # super lax
 
@@ -30,7 +30,7 @@ class TestPoisson(unittest.TestCase):
         beta0 = np.r_[1.1, 2.2, 3.3, 4.4]
         y, X = poisson.simulate(100, beta0)
         mu_0, C_0 = np.zeros(4), np.eye(4)
-        fit = poisson.poisson_stan_reg(y, X, mu_0, C_0)
+        fit = poisson.stan_reg(y, X, mu_0, C_0)
         draws = fit.extract('beta')['beta']
         means = np.mean(draws, axis=0)
         self.assertLess(np.linalg.norm(beta0 - means, 2), 2.0)
