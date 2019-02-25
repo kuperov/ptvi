@@ -56,7 +56,9 @@ def vi_reg(y, A, mu_0, C_0, tol=1e-10, maxiter=1000, maxNRiter=10):
         dict of result values
     """
     N, k, = A.shape
-    assert y.shape == (N,)
+    assert y.shape == (N,) 
+    assert C_0.shape == (k, k)
+    assert mu_0.shape == (k,)
     old_elbo = None
     U, Sigma, V = np.linalg.svd(A, full_matrices=True)  # replace with rSVD
     C_0_inv = np.linalg.inv(C_0)
@@ -120,7 +122,7 @@ def vi_reg(y, A, mu_0, C_0, tol=1e-10, maxiter=1000, maxNRiter=10):
     else:
         print("WARNING: Maximum iterations reached.")
     print_status()
-    return {"elbo": elbo, "C": C, "x_bar": x_bar}
+    return {"elbo": elbo, "C": C, "x_bar": x_bar, 'q': mvn(x_bar, C)}
 
 
 def stan_reg(y, X, mu_0, C_0, num_draws=10_000, chains=1, warmup=1_000):
@@ -216,7 +218,7 @@ def simulate_ar(N, beta, phi, X=None, c=1e-3, rstate=None):
         beta:   Regression coefficients
         phi:    Autoregression coefficients
         X:      Covariate matrix
-        c:      Scalar threshold value 0<x<1 to replace zeros with
+        c:      Scalar threshold value 0<c<1 to replace zeros with
         rstate: Numpy random state
 
     Returns:
@@ -258,3 +260,58 @@ def ar_design_matrix(y, X, p, c=1e-3):
     X_ = np.block([X[p:, ], y_lags])
     y_ = y[p:]
     return (y_, X_)
+
+
+def forecast_arp(y, X, fit, p, steps, c=0.2, num_draws=10_000, rs=None):
+    """Construct forecast by simulation.
+
+    Forecasts are presented as histograms describing the forecast pmf.
+
+    Args:
+        y:         observed data
+        X:         covariate matrix
+        p:         autoregression order
+        fit:       inference results to use to construct forecast
+        steps:     number of steps for forecast
+        c:         threshold 0<c<1
+        num_draws: number of simulation draws for forecast
+        rs:        numpy random state
+
+    Returns:
+        Dict of forecast densities, keyed by observation number.
+    """
+    if rs is None:
+        rs = np.random.RandomState(seed=123)
+    assert 0.0 < c < 1.0
+    N, k = X.shape
+    y_ext = np.r_[y, np.zeros(steps)]
+    max_x = np.ceil(np.max(y) * 2).astype(int)
+    fc_hist = np.zeros([steps, max_x])
+    x_hat = np.mean(X, axis=0)  # hold x at average
+    if isinstance(fit, dict):
+        q, draws = fit['q'], None
+    elif isinstance(fit, np.ndarray):
+        draws, q = fit, None
+    for i in range(num_draws):
+        params = q.rvs() if q is not None else draws[i, :]
+        beta, phi = params[:k], params[k:]
+        for j in range(steps):
+            eta = x_hat @ beta
+            for k in range(p):
+                eta += phi[k] * np.log(max(c, y_ext[N + j - k - 1]))
+            try:
+                y_hat = rs.poisson(lam=np.exp(eta))
+            except ValueError:
+                print(f'Value error with eta={eta}, exp(eta)={np.exp(eta)}')
+                import traceback
+                traceback.print_exc()
+            if (y_hat >= fc_hist.shape[1]):
+                # double the histogram size (or expand to y_hat)
+                new_elem = max(fc_hist.shape[1] * 2, y_hat + 1) - fc_hist.shape[1]
+                fc_hist = np.pad(fc_hist, mode='constant', constant_values=0.0,
+                                 pad_width=[[0, 0], [0, new_elem]])
+            fc_hist[j, y_hat] += 1.0
+            y_ext[N + j] = y_hat
+    # normalize histogram, indexed by 0-based observation number
+    fcs = {N + j: fc_hist[j, :] / np.sum(fc_hist[j, :]) for j in range(steps)}
+    return fcs
