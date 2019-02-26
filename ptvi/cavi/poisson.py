@@ -10,7 +10,7 @@ from scipy import stats, special
 from scipy.stats import multivariate_normal as mvn
 # from sklearn.decomposition import TruncatedSVD  # <-- TODO: optimize with random SVD
 import time
-
+from ptvi.mvn_posterior import MVNPosterior
 from ptvi.cavi.stanutil import cache_stan_model
 
 
@@ -292,6 +292,11 @@ def forecast_arp(y, X, fit, p, steps, c=0.2, num_draws=10_000, rs=None):
         q, draws = fit['q'], None
     elif isinstance(fit, np.ndarray):
         draws, q = fit, None
+    elif isinstance(fit, MVNPosterior):
+        fit_q = getattr(fit, 'q')
+        mean = fit_q.mean.cpu().numpy()
+        cov = fit_q.covariance_matrix.cpu().numpy()
+        draws, q = None, mvn(mean, cov)
     for i in range(num_draws):
         params = q.rvs() if q is not None else draws[i, :]
         beta, phi = params[:k], params[k:]
