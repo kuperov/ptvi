@@ -117,23 +117,26 @@ def discrete_fan_chart(
     ax.plot(x[:N], y, color="black", alpha=1, linewidth=2)
     if not probs:
         probs = [0.9, 0.5, 0]
-    if 0 in probs:
-        probs = probs.copy()  # don't modify caller's list
-        probs.remove(0)
-        median_line = [np.median(fc[x]) for x in range(N, N + steps)]
-        ax.plot(x[N:], median_line, color="black", alpha=1, linewidth=2, label="Median")
     fan_xs = np.array(range(N, N + steps + 1))
-    quantiles = sorted([q for p in probs for q in [p / 2, 1 - p / 2]])
+    quantiles = sorted([q for p in probs for q in [(1 - p) / 2, 1 - (1 - p) / 2]])
     prob_list = probs + list(reversed(list(probs[:-1])))
     segments = zip(quantiles[:-1], quantiles[1:], prob_list)
+    segments = []
+    for i in range(len(prob_list)):
+        segments.append( (quantiles[i], quantiles[i+1], prob_list[i]) )
     for bottom_prob, top_prob, segment_prob in segments:
         alpha = 1 - segment_prob
-        label = f"{100*segment_prob:.0f}%" if top_prob > 0.5 else None
+        if top_prob > 0.5:
+            label = f"{100*segment_prob:.0f}%"
+        elif segment_prob == 0.0:
+            label = 'Median'
+        else:
+            label = None
         upper_y = np.r_[
-            y[-1], [np.quantile(fc[x], q=top_prob) for x in range(N, N + steps)]
+            y[-1], [discrete_hist_qtile(fc[x], q=top_prob, mode='ceiling') for x in range(N, N + steps)]
         ]
         lower_y = np.r_[
-            y[-1], [np.quantile(fc[x], q=bottom_prob) for x in range(N, N + steps)]
+            y[-1], [discrete_hist_qtile(fc[x], q=bottom_prob, mode='floor') for x in range(N, N + steps)]
         ]
         ax.fill_between(
             fan_xs, upper_y, lower_y, color="blue", alpha=alpha, label=label
@@ -145,17 +148,48 @@ def discrete_fan_chart(
     return fig
 
 
-def _hist_qtile(hist, alpha):
+def _hist_qtile(hist, q):
+    """Compute quantile for a discrete histogram, interpolating between buckets.
+
+    Args:
+        hist:    1-array of weights that sum to 1. First bucket is zero.
+        q:       desired quantile, 0.0 <= q <= 1.0
+    
+    Returns:
+        Quantile (fractional bucket value) corresponding to q
+    """
+    assert 0.0 <= q <= 1.0
     bins = len(hist)
     xs = list(range(bins+1))
     ys = np.r_[0, np.cumsum(hist)]
     for x1 in range(bins):
-        if ys[x1] <= alpha <= ys[x1+1]:
-            return x1 + (alpha - ys[x1]) / (ys[x1+1] - ys[x1])
+        if ys[x1] <= q <= ys[x1+1]:
+            return x1 + (q - ys[x1]) / (ys[x1+1] - ys[x1])
     return ys[-1]
 
 
+# Vectorize quantile function on the desired quantiles
 hist_qtile = np.vectorize(_hist_qtile, otypes=[np.float64], excluded=[0])
+
+
+def discrete_hist_qtile(hist, q, mode='floor'):
+    """Compute discrete quantile for a discrete histogram.
+
+    Args:
+        hist:    1-array of weights that sum to 1. First bucket is zero.
+        q:       desired quantile, 0.0 <= q <= 1.0
+        mode:    if 'floor' return largest bucket smaller than q, vice-versa for 'ceiling'
+    
+    Returns:
+        Quantile (fractional bucket value) corresponding to q
+    """
+    assert 0.0 <= q <= 1.0
+    if mode == 'floor':
+        return np.floor(hist_qtile(hist, q))
+    elif mode == 'ceiling':
+        return np.ceil(hist_qtile(hist, q))
+    else:
+        raise Exception(f'Unknown mode "{mode}".')
 
 
 def trace(arr, name="", title=None, **kwargs):
