@@ -123,20 +123,28 @@ def discrete_fan_chart(
     segments = zip(quantiles[:-1], quantiles[1:], prob_list)
     segments = []
     for i in range(len(prob_list)):
-        segments.append( (quantiles[i], quantiles[i+1], prob_list[i]) )
+        segments.append((quantiles[i], quantiles[i + 1], prob_list[i]))
     for bottom_prob, top_prob, segment_prob in segments:
         alpha = 1 - segment_prob
         if top_prob > 0.5:
             label = f"{100*segment_prob:.0f}%"
         elif segment_prob == 0.0:
-            label = 'Median'
+            label = "Median"
         else:
             label = None
         upper_y = np.r_[
-            y[-1], [discrete_hist_qtile(fc[x], q=top_prob, mode='ceiling') for x in range(N, N + steps)]
+            y[-1],
+            [
+                discrete_hist_qtile(fc[x], q=top_prob, mode="ceiling")
+                for x in range(N, N + steps)
+            ],
         ]
         lower_y = np.r_[
-            y[-1], [discrete_hist_qtile(fc[x], q=bottom_prob, mode='floor') for x in range(N, N + steps)]
+            y[-1],
+            [
+                discrete_hist_qtile(fc[x], q=bottom_prob, mode="floor")
+                for x in range(N, N + steps)
+            ],
         ]
         ax.fill_between(
             fan_xs, upper_y, lower_y, color="blue", alpha=alpha, label=label
@@ -160,11 +168,11 @@ def _hist_qtile(hist, q):
     """
     assert 0.0 <= q <= 1.0
     bins = len(hist)
-    xs = list(range(bins+1))
+    xs = list(range(bins + 1))
     ys = np.r_[0, np.cumsum(hist)]
     for x1 in range(bins):
-        if ys[x1] <= q <= ys[x1+1]:
-            return x1 + (q - ys[x1]) / (ys[x1+1] - ys[x1])
+        if ys[x1] <= q <= ys[x1 + 1]:
+            return x1 + (q - ys[x1]) / (ys[x1 + 1] - ys[x1])
     return ys[-1]
 
 
@@ -172,7 +180,7 @@ def _hist_qtile(hist, q):
 hist_qtile = np.vectorize(_hist_qtile, otypes=[np.float64], excluded=[0])
 
 
-def discrete_hist_qtile(hist, q, mode='floor'):
+def discrete_hist_qtile(hist, q, mode="floor"):
     """Compute discrete quantile for a discrete histogram.
 
     Args:
@@ -184,9 +192,9 @@ def discrete_hist_qtile(hist, q, mode='floor'):
         Quantile (fractional bucket value) corresponding to q
     """
     assert 0.0 <= q <= 1.0
-    if mode == 'floor':
+    if mode == "floor":
         return np.floor(hist_qtile(hist, q))
-    elif mode == 'ceiling':
+    elif mode == "ceiling":
         return np.ceil(hist_qtile(hist, q))
     else:
         raise Exception(f'Unknown mode "{mode}".')

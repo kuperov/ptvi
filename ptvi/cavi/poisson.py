@@ -5,9 +5,11 @@ See: [1] Arridge, S. R., Ito, K., Jin, B., & Zhang, C. (2018). Variational
      https://iopscience.iop.org/article/10.1088/1361-6420/aaa0ab/meta
 """
 
+import traceback
 import numpy as np
 from scipy import stats, special
 from scipy.stats import multivariate_normal as mvn
+
 # from sklearn.decomposition import TruncatedSVD  # <-- TODO: optimize with random SVD
 import time
 from ptvi.mvn_posterior import MVNPosterior
@@ -56,7 +58,7 @@ def vi_reg(y, A, mu_0, C_0, tol=1e-10, maxiter=1000, maxNRiter=10):
         dict of result values
     """
     N, k, = A.shape
-    assert y.shape == (N,) 
+    assert y.shape == (N,)
     assert C_0.shape == (k, k)
     assert mu_0.shape == (k,)
     old_elbo = None
@@ -81,7 +83,8 @@ def vi_reg(y, A, mu_0, C_0, tol=1e-10, maxiter=1000, maxNRiter=10):
                 - A.T @ y
             )
             curlG = (
-                A.T @ np.diag(np.exp(A @ x_bar + 0.5 * np.diag(A @ C @ A.T))) @ A + C_0_inv
+                A.T @ np.diag(np.exp(A @ x_bar + 0.5 * np.diag(A @ C @ A.T))) @ A
+                + C_0_inv
             )
             delta_x = np.linalg.solve(curlG, -G)
             x_bar = x_bar + delta_x
@@ -108,7 +111,7 @@ def vi_reg(y, A, mu_0, C_0, tol=1e-10, maxiter=1000, maxNRiter=10):
             + elbo_const
         )
         if old_elbo and old_elbo > elbo:
-            print(f'BUG WARNING: elbo decreased from {old_elbo:.2f} to {elbo:.2f}.')
+            print(f"BUG WARNING: elbo decreased from {old_elbo:.2f} to {elbo:.2f}.")
         if old_elbo and elbo - old_elbo < tol:
             end_time = time.perf_counter()
             print(f"Convergence detected in {1e3*(end_time - start_time):.3f} ms.")
@@ -118,11 +121,11 @@ def vi_reg(y, A, mu_0, C_0, tol=1e-10, maxiter=1000, maxNRiter=10):
         print_status()
         if not np.isfinite(elbo):
             print_status()
-            raise Exception('Infinite objective. Stopping.')
+            raise Exception("Infinite objective. Stopping.")
     else:
         print("WARNING: Maximum iterations reached.")
     print_status()
-    return {"elbo": elbo, "C": C, "x_bar": x_bar, 'q': mvn(x_bar, C)}
+    return {"elbo": elbo, "C": C, "x_bar": x_bar, "q": mvn(x_bar, C)}
 
 
 def stan_reg(y, X, mu_0, C_0, num_draws=10_000, chains=1, warmup=1_000):
@@ -154,7 +157,9 @@ def stan_reg(y, X, mu_0, C_0, num_draws=10_000, chains=1, warmup=1_000):
     return fit
 
 
-def mh_reg(y, X, mu_0, C_0, num_draws=10_000, warmup=1_000, init_tune=1e-2, autotune=True):
+def mh_reg(
+    y, X, mu_0, C_0, num_draws=10_000, warmup=1_000, init_tune=1e-2, autotune=True
+):
     """Fit a poisson regression using an adaptive Metropolis-Hastings algo.
 
     The Gaussian proposal density has covariance C_0 * tune. Tune is adjusted each
@@ -190,23 +195,39 @@ def mh_reg(y, X, mu_0, C_0, num_draws=10_000, warmup=1_000, init_tune=1e-2, auto
 
     autotune_s = 100
     for i in range(1, warmup + num_draws):
-        in_warmup = (i <= warmup)
+        in_warmup = i <= warmup
         # auto-tune so acceptance rate is near 0.23
         if autotune and in_warmup and i > autotune_s + 1 and i % autotune_s == 0:
-            accept_rate = np.mean(np.where(draws[i - autotune_s:i, 0] != draws[i - autotune_s - 1:i - 1, 0], 1, 0))
+            accept_rate = np.mean(
+                np.where(
+                    draws[i - autotune_s : i, 0]
+                    != draws[i - autotune_s - 1 : i - 1, 0],
+                    1,
+                    0,
+                )
+            )
             old_tune = tune
             tune += tune * (accept_rate - 0.23)
-            print(f'Warmup auto-tuning: accept rate = {100*accept_rate:.1f}%, adjusting tune: {old_tune:.6f} -> {tune:.6f}')
+            print(
+                f"Warmup auto-tuning: accept rate = {100*accept_rate:.1f}%, adjusting tune: {old_tune:.6f} -> {tune:.6f}"
+            )
         new_proposal = mvn(beta, tune * C_0)
         beta_prop = proposal.rvs()
-        ln_alpha = ln_joint(beta_prop) - ln_joint(beta) + new_proposal.logpdf(beta) - proposal.logpdf(beta_prop)
+        ln_alpha = (
+            ln_joint(beta_prop)
+            - ln_joint(beta)
+            + new_proposal.logpdf(beta)
+            - proposal.logpdf(beta_prop)
+        )
         if np.exp(ln_alpha) > unif.rvs():
             beta = beta_prop
             proposal = new_proposal
-        draws[i, ] = beta
+        draws[i,] = beta
     end_t = time.perf_counter()
-    accept_rate = np.mean(np.where(draws[warmup + 1:, 0] != draws[warmup:-1, 0], 1, 0))
-    print(f"Time elapsed: {(end_t - start_t):.4f}s, acceptance rate {100*accept_rate:.2f}%.")
+    accept_rate = np.mean(np.where(draws[warmup + 1 :, 0] != draws[warmup:-1, 0], 1, 0))
+    print(
+        f"Time elapsed: {(end_t - start_t):.4f}s, acceptance rate {100*accept_rate:.2f}%."
+    )
     return draws[warmup:, :]
 
 
@@ -231,7 +252,7 @@ def simulate_ar(N, beta, phi, X=None, c=1e-3, rstate=None):
         X = rstate.normal(size=[N, k])
         X[:, 0] = 1.0
     else:
-        assert X.shape == (N, k), 'X should be a N*k array.'
+        assert X.shape == (N, k), "X should be a N*k array."
     eta = (X @ beta).astype(np.float64)  # contribution from regression coeffts
     y = np.empty(shape=[N], dtype=np.float64)
     for i in range(N):
@@ -257,7 +278,7 @@ def ar_design_matrix(y, X, p, c=1e-3):
     """
     lystar = np.log(np.maximum(y, c))
     y_lags = np.stack([lystar[p - i - 1 : -i - 1] for i in range(p)], axis=0).T
-    X_ = np.block([X[p:, ], y_lags])
+    X_ = np.block([X[p:,], y_lags])
     y_ = y[p:]
     return (y_, X_)
 
@@ -289,11 +310,11 @@ def forecast_arp(y, X, fit, p, steps, c=0.2, num_draws=10_000, rs=None):
     fc_hist = np.zeros([steps, max_x])
     x_hat = np.mean(X, axis=0)  # hold x at average
     if isinstance(fit, dict):
-        q, draws = fit['q'], None
+        q, draws = fit["q"], None
     elif isinstance(fit, np.ndarray):
         draws, q = fit, None
     elif isinstance(fit, MVNPosterior):
-        fit_q = getattr(fit, 'q')
+        fit_q = getattr(fit, "q")
         mean = fit_q.mean.cpu().numpy()
         cov = fit_q.covariance_matrix.cpu().numpy()
         draws, q = None, mvn(mean, cov)
@@ -307,16 +328,67 @@ def forecast_arp(y, X, fit, p, steps, c=0.2, num_draws=10_000, rs=None):
             try:
                 y_hat = rs.poisson(lam=np.exp(eta))
             except ValueError:
-                print(f'Value error with eta={eta}, exp(eta)={np.exp(eta)}')
-                import traceback
+                print(f"Value error with eta={eta}, exp(eta)={np.exp(eta)}")
                 traceback.print_exc()
-            if (y_hat >= fc_hist.shape[1]):
+            if y_hat >= fc_hist.shape[1]:
                 # double the histogram size (or expand to y_hat)
                 new_elem = max(fc_hist.shape[1] * 2, y_hat + 1) - fc_hist.shape[1]
-                fc_hist = np.pad(fc_hist, mode='constant', constant_values=0.0,
-                                 pad_width=[[0, 0], [0, new_elem]])
+                fc_hist = np.pad(
+                    fc_hist,
+                    mode="constant",
+                    constant_values=0.0,
+                    pad_width=[[0, 0], [0, new_elem]],
+                )
             fc_hist[j, y_hat] += 1.0
             y_ext[N + j] = y_hat
     # normalize histogram, indexed by 0-based observation number
     fcs = {N + j: fc_hist[j, :] / np.sum(fc_hist[j, :]) for j in range(steps)}
     return fcs
+
+
+def score_arp_forecasts(
+    y, X, beta, phi, fcs, p, steps, c=0.2, num_draws=10_000, rs=None
+):
+    """Score poisson AR(p) forecasts by simulation.
+
+    Forecasts are presented as histograms describing the forecast pmf.
+
+    Args:
+        y:         observed data
+        X:         covariate matrix
+        beta:      true regression parameter (1-array)
+        phi:       true autoregressive parameter (1-array)
+        fcs:       list of forecasts, as histograms
+        p:         autoregression order
+        steps:     number of steps for forecast
+        c:         threshold 0<c<1
+        num_draws: number of simulation draws for forecast
+        rs:        numpy random state
+
+    Returns:
+        Dict of forecast densities, keyed by observation number.
+    """
+    if rs is None:
+        rs = np.random.RandomState(seed=123)
+    assert 0.0 < c < 1.0
+    N, k = X.shape
+    y_ext = np.r_[y, np.zeros(steps)]
+    fc_scores = np.zeros([steps, len(fcs)])
+    x_hat = np.mean(X, axis=0)  # hold x at average
+    for i in range(num_draws):
+        for j in range(steps):
+            eta = x_hat @ beta
+            for k in range(p):
+                eta += phi[k] * np.log(max(c, y_ext[N + j - k - 1]))
+            try:
+                y_hat = rs.poisson(lam=np.exp(eta))
+            except ValueError:
+                print(f"Value error with eta={eta}, exp(eta)={np.exp(eta)}")
+                traceback.print_exc()
+            y_ext[N + j] = y_hat
+            # we have a draw of y_[N+i], now score this for each forecast
+            for l in range(len(fcs)):
+                fc_scores[j, l] += (
+                    np.log(fcs[l][y_hat]) / num_draws
+                )  # this will yield -inf for sure
+    return fc_scores

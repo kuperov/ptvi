@@ -15,7 +15,7 @@ def ar_design_matrix(y, X, p):
         y, (N-p)*(p+k) design matrix
     """
     y_lags = np.stack([y[p - i - 1 : -i - 1] for i in range(p)], axis=0).T
-    X_ = np.block([X[p:, ], y_lags])
+    X_ = np.block([X[p:,], y_lags])
     y_ = y[p:]
     return (y_, X_)
 

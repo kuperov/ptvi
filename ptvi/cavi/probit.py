@@ -165,7 +165,7 @@ def stan_probit(
     """
     N, k = X.shape
     assert y.shape == (N,)
-    mdl = cache_stan_model('probit.stan')
+    mdl = cache_stan_model("probit.stan")
     y_ = y.astype(int)
     data = {
         "N": N,

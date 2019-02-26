@@ -78,7 +78,7 @@ def stan_reg(
     Returns:
         draws
     """
-    model = cache_stan_model('bayesian_reg.stan')
+    model = cache_stan_model("bayesian_reg.stan")
     N, k = X.shape
     assert len(y) == N
     dat = dict(y=y, X=X, a_0=a_0, b_0=b_0, c_0=c_0, d_0=d_0, N=N, k=k)
