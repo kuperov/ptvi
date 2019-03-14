@@ -113,8 +113,9 @@ def discrete_fan_chart(
         x = np.array(range(1, N + steps + 1))
     if not start:
         start = np.min(x)
+    start_idx = np.where(x == start)[0][0]
     ax.set_xlim([start, np.max(x)])
-    ax.plot(x[:N], y, color="black", alpha=1, linewidth=2)
+    ax.plot(x[start_idx:N], y[start_idx:], color="black", alpha=1, linewidth=2)
     if not probs:
         probs = [0.9, 0.5, 0]
     fan_xs = np.array(range(N, N + steps + 1))
