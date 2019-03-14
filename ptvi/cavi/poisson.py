@@ -283,7 +283,7 @@ def ar_design_matrix(y, X, p, c=1e-3):
     return (y_, X_)
 
 
-def forecast_arp(y, X, fit, p, steps, c=0.2, num_draws=10_000, rs=None):
+def forecast_arp(y, X, fit, p, steps, future_X=None, c=0.2, num_draws=10_000, rs=None):
     """Construct forecast by simulation.
 
     Forecasts are presented as histograms describing the forecast pmf.
@@ -294,6 +294,7 @@ def forecast_arp(y, X, fit, p, steps, c=0.2, num_draws=10_000, rs=None):
         p:         autoregression order
         fit:       inference results to use to construct forecast
         steps:     number of steps for forecast
+        future_X:  covariate values to fix for forecast (use mean if None)
         c:         threshold 0<c<1
         num_draws: number of simulation draws for forecast
         rs:        numpy random state
@@ -322,9 +323,11 @@ def forecast_arp(y, X, fit, p, steps, c=0.2, num_draws=10_000, rs=None):
         params = q.rvs() if q is not None else draws[i, :]
         beta, phi = params[:k], params[k:]
         for j in range(steps):
+            if future_X is not None:
+                x_hat = future_X[j,:]
             eta = x_hat @ beta
-            for k in range(p):
-                eta += phi[k] * np.log(max(c, y_ext[N + j - k - 1]))
+            for l in range(p):
+                eta += phi[l] * np.log(max(c, y_ext[N + j - l - 1]))
             try:
                 y_hat = rs.poisson(lam=np.exp(eta))
             except ValueError:
@@ -347,7 +350,7 @@ def forecast_arp(y, X, fit, p, steps, c=0.2, num_draws=10_000, rs=None):
 
 
 def score_arp_forecasts(
-    y, X, beta, phi, fcs, p, steps, c=0.2, num_draws=10_000, rs=None
+    y, X, beta, phi, fcs, p, steps, future_X=None, c=0.2, num_draws=10_000, rs=None
 ):
     """Score poisson AR(p) forecasts by simulation.
 
@@ -361,6 +364,7 @@ def score_arp_forecasts(
         fcs:       list of forecasts, as histograms
         p:         autoregression order
         steps:     number of steps for forecast
+        future_X:  covariate values to fix for forecast (use mean if None)
         c:         threshold 0<c<1
         num_draws: number of simulation draws for forecast
         rs:        numpy random state
@@ -377,6 +381,8 @@ def score_arp_forecasts(
     x_hat = np.mean(X, axis=0)  # hold x at average
     for i in range(num_draws):
         for j in range(steps):
+            if future_X is not None:
+                x_hat = future_X[j,:]
             eta = x_hat @ beta
             for k in range(p):
                 eta += phi[k] * np.log(max(c, y_ext[N + j - k - 1]))
