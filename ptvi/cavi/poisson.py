@@ -71,12 +71,12 @@ def vi_reg(y, A, mu_0, C_0, tol=1e-10, maxiter=1000, maxNRiter=10):
     )
     start_time = time.perf_counter()
 
-    def print_status():
+    def print_status(i):
         print(f"{i:4d}. elbo = {elbo:.4f}, x_bar = {x_bar.round(2)}")
 
     for i in range(maxiter):
         # Newton-Raphson update for x_bar
-        for j in range(maxNRiter):
+        for _ in range(maxNRiter):
             G = (
                 A.T @ np.exp(A @ x_bar + 0.5 * np.diag(A @ C @ A.T))
                 + C_0_inv @ (x_bar - mu_0)
@@ -118,13 +118,13 @@ def vi_reg(y, A, mu_0, C_0, tol=1e-10, maxiter=1000, maxNRiter=10):
             break
         old_elbo = elbo
         # if i % 5 == 0:
-        print_status()
+        print_status(i)
         if not np.isfinite(elbo):
             print_status()
             raise Exception("Infinite objective. Stopping.")
     else:
         print("WARNING: Maximum iterations reached.")
-    print_status()
+    print_status(i)
     return {"elbo": elbo, "C": C, "x_bar": x_bar, "q": mvn(x_bar, C)}
 
 
@@ -209,7 +209,8 @@ def mh_reg(
             old_tune = tune
             tune += tune * (accept_rate - 0.23)
             print(
-                f"Warmup auto-tuning: accept rate = {100*accept_rate:.1f}%, adjusting tune: {old_tune:.6f} -> {tune:.6f}"
+                f"Warmup auto-tuning: accept rate = {100*accept_rate:.1f}%, "
+                f"adjusting tune: {old_tune:.6f} -> {tune:.6f}"
             )
         new_proposal = mvn(beta, tune * C_0)
         beta_prop = proposal.rvs()
@@ -222,11 +223,12 @@ def mh_reg(
         if np.exp(ln_alpha) > unif.rvs():
             beta = beta_prop
             proposal = new_proposal
-        draws[i,] = beta
+        draws[i, ] = beta
     end_t = time.perf_counter()
     accept_rate = np.mean(np.where(draws[warmup + 1 :, 0] != draws[warmup:-1, 0], 1, 0))
     print(
-        f"Time elapsed: {(end_t - start_t):.4f}s, acceptance rate {100*accept_rate:.2f}%."
+        f"Time elapsed: {(end_t - start_t):.4f}s, "
+        f"acceptance rate {100*accept_rate:.2f}%."
     )
     return draws[warmup:, :]
 
@@ -278,7 +280,7 @@ def ar_design_matrix(y, X, p, c=1e-3):
     """
     lystar = np.log(np.maximum(y, c))
     y_lags = np.stack([lystar[p - i - 1 : -i - 1] for i in range(p)], axis=0).T
-    X_ = np.block([X[p:,], y_lags])
+    X_ = np.block([X[p:, ], y_lags])
     y_ = y[p:]
     return (y_, X_)
 
@@ -324,7 +326,7 @@ def forecast_arp(y, X, fit, p, steps, future_X=None, c=0.2, num_draws=10_000, rs
         beta, phi = params[:k], params[k:]
         for j in range(steps):
             if future_X is not None:
-                x_hat = future_X[j,:]
+                x_hat = future_X[j, :]
             eta = x_hat @ beta
             for l in range(p):
                 eta += phi[l] * np.log(max(c, y_ext[N + j - l - 1]))
@@ -347,6 +349,95 @@ def forecast_arp(y, X, fit, p, steps, future_X=None, c=0.2, num_draws=10_000, rs
     # normalize histogram, indexed by 0-based observation number
     fcs = {N + j: fc_hist[j, :] / np.sum(fc_hist[j, :]) for j in range(steps)}
     return fcs
+
+
+def forecast_arp_pmfs(y, X, fit, p, steps, future_X=None, c=0.2, num_draws=10_000, rs=None):
+    """Construct forecast densities by simulation.
+
+    Forecasts are presented as histograms describing the forecast pmf.
+
+    Args:
+        y:         observed data
+        X:         covariate matrix
+        p:         autoregression order
+        fit:       inference results to use to construct forecast
+        steps:     number of steps for forecast
+        future_X:  covariate values to fix for forecast (use mean if None)
+        c:         threshold 0<c<1
+        num_draws: number of simulation draws for forecast
+        rs:        numpy random state
+
+    Returns:
+        Dict of forecast densities, keyed by observation number.
+    """
+    if rs is None:
+        rs = np.random.RandomState(seed=123)
+    assert 0.0 < c < 1.0
+    N, k = X.shape
+    y_ext = np.r_[y, np.zeros(steps)]
+    max_x = np.ceil(np.max(y) * 2).astype(int)
+    fc_hist = np.zeros([steps, max_x])  # forecast histogram
+    mus = np.zeros([steps, num_draws])  # forecast means, for constructing densities
+    x_hat = np.mean(X, axis=0)  # hold x at average
+    if isinstance(fit, dict):
+        q, draws = fit["q"], None
+    elif isinstance(fit, np.ndarray):
+        draws, q = fit, None
+    elif isinstance(fit, MVNPosterior):
+        fit_q = getattr(fit, "q")
+        mean = fit_q.mean.cpu().numpy()
+        cov = fit_q.covariance_matrix.cpu().numpy()
+        draws, q = None, mvn(mean, cov)
+    for i in range(num_draws):
+        params = q.rvs() if q is not None else draws[i, :]
+        beta, phi = params[:k], params[k:]
+        for j in range(steps):
+            if future_X is not None:
+                x_hat = future_X[j, :]
+            eta = x_hat @ beta
+            for l in range(p):
+                eta += phi[l] * np.log(max(c, y_ext[N + j - l - 1]))
+            mus[j, i] = np.exp(eta)
+            try:
+                y_hat = rs.poisson(lam=np.exp(eta))
+            except ValueError:
+                print(f"Value error with eta={eta}, exp(eta)={np.exp(eta)}")
+                traceback.print_exc()
+            if y_hat >= fc_hist.shape[1]:
+                # double the histogram size (or expand to y_hat)
+                new_elem = max(fc_hist.shape[1] * 2, y_hat + 1) - fc_hist.shape[1]
+                fc_hist = np.pad(
+                    fc_hist,
+                    mode="constant",
+                    constant_values=0.0,
+                    pad_width=[[0, 0], [0, new_elem]],
+                )
+            fc_hist[j, y_hat] += 1.0
+            y_ext[N + j] = y_hat
+    # one Poisson mixture distribution per time step
+    fcs = {N + j: poisson_mixture(mus[j, :]) for j in range(steps)}
+    return fcs
+
+
+class PoissonMixture(stats.rv_discrete):
+    """Equally weighted poisson distribution mixture.
+    """
+    def _argcheck(self, mus):
+        assert np.alltrue(mus > 0), 'Mean vector must all be positive'
+        self._mus = np.array(mus)
+        nelem = 1 if np.ndim == 0 else mus.shape[0]
+        if self._mus.ndim <= 1:
+            self._mus = self._mus.reshape(1, nelem)
+        return 1
+
+    def _pmf(self, k, mus):
+        len_k = 1 if isinstance(k, int) else len(k)
+        my_k = np.reshape(k, [len_k, 1])
+        b_k, b_mus, = np.broadcast_arrays(my_k, self._mus)
+        return np.mean(np.exp(-b_mus) * (b_mus ** b_k), axis=1) / special.factorial(k)
+
+
+poisson_mixture = PoissonMixture(name="poisson_mixture")
 
 
 def score_arp_forecasts(
@@ -379,13 +470,13 @@ def score_arp_forecasts(
     y_ext = np.r_[y, np.zeros(steps)]
     fc_scores = np.zeros([steps, len(fcs)])
     x_hat = np.mean(X, axis=0)  # hold x at average
-    for i in range(num_draws):
+    for _ in range(num_draws):
         for j in range(steps):
             if future_X is not None:
-                x_hat = future_X[j,:]
+                x_hat = future_X[j, :]
             eta = x_hat @ beta
-            for k in range(p):
-                eta += phi[k] * np.log(max(c, y_ext[N + j - k - 1]))
+            for l in range(p):
+                eta += phi[l] * np.log(max(c, y_ext[N + j - l - 1]))
             try:
                 y_hat = rs.poisson(lam=np.exp(eta))
             except ValueError:
@@ -397,4 +488,53 @@ def score_arp_forecasts(
                 fc_scores[j, l] += (
                     np.log(fcs[l][y_hat]) / num_draws
                 )  # this will yield -inf for sure
+    return fc_scores
+
+
+def score_arp_pmf_forecasts(
+    y, X, beta, phi, fcs, p, steps, future_X=None, c=0.2, num_draws=10_000, rs=None
+):
+    """Score poisson AR(p) forecasts by simulation.
+
+    Forecasts are presented as histograms describing the forecast pmf.
+
+    Args:
+        y:         observed data
+        X:         covariate matrix
+        beta:      true regression parameter (1-array)
+        phi:       true autoregressive parameter (1-array)
+        fcs:       list of forecasts, as mixture distributions
+        p:         autoregression order
+        steps:     number of steps for forecast
+        future_X:  covariate values to fix for forecast (use mean if None)
+        c:         threshold 0<c<1
+        num_draws: number of simulation draws for forecast
+        rs:        numpy random state
+
+    Returns:
+        Dict of forecast densities, keyed by observation number.
+    """
+    if rs is None:
+        rs = np.random.RandomState(seed=123)
+    assert 0.0 < c < 1.0
+    N, k = X.shape
+    y_ext = np.r_[y, np.zeros(steps)]
+    fc_scores = np.zeros([steps, len(fcs)])
+    x_hat = np.mean(X, axis=0)  # hold x at average
+    for _ in range(num_draws):
+        for j in range(steps):
+            if future_X is not None:
+                x_hat = future_X[j, :]
+            eta = x_hat @ beta
+            for l in range(p):
+                eta += phi[l] * np.log(max(c, y_ext[N + j - l - 1]))
+            try:
+                y_hat = rs.poisson(lam=np.exp(eta))
+            except ValueError:
+                print(f"Value error with eta={eta}, exp(eta)={np.exp(eta)}")
+                traceback.print_exc()
+            y_ext[N + j] = y_hat
+            # we have a draw of y_[N+i], now score this for each forecast
+            for l, fc in enumerate(fcs):
+                fc_scores[j, l] += np.log(fc[N + l].pmf(y_hat)) / num_draws
     return fc_scores
