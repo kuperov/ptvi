@@ -1,5 +1,6 @@
 import torch
 from torch.distributions import Normal, LogNormal, Beta
+from ptvi.mvn_posterior import MVNPosterior
 from ptvi import (
     Model,
     global_param,
@@ -31,7 +32,7 @@ class FilteredLocalLevelModel(Model):
         # prediction step
         z_pred = ρ * z0
         Σz_pred = ρ ** 2 * σz0 ** 2 + 1
-        y_pred = η * z_pred
+        y_pred = γ + η * z_pred
         Σy_pred = η ** 2 * Σz_pred + σ ** 2
 
         # correction step
@@ -46,7 +47,7 @@ class FilteredLocalLevelModel(Model):
             # prediction step
             z_pred = ρ * z_upd
             Σz_pred = ρ ** 2 * Σz_upd + 1
-            y_pred = η * z_pred
+            y_pred = γ + η * z_pred
             Σy_pred = η ** 2 * Σz_pred + σ ** 2
 
             # correction step
@@ -128,3 +129,69 @@ class FilteredLocalLevelModel(Model):
             "y_pred": y_pred,
             "Σy_pred": Σy_pred,
         }
+
+    def filtered_path(self, y, params):
+        """Filter path, return final obs."""
+        z0, σz0, γ, η, σ, ρ, = params
+        z = torch.zeros_like(y)
+        z[0] = z0
+        # unroll first iteration of loop to set initial conditions
+        # prediction step
+        z_pred = ρ * z0
+        Σz_pred = ρ ** 2 * σz0 ** 2 + 1
+        y_pred = γ + η * z_pred
+        Σy_pred = η ** 2 * Σz_pred + σ ** 2
+
+        # correction step
+        gain = Σz_pred * η / Σy_pred
+        z_upd = z_pred + gain * (y[0] - y_pred)
+        Σz_upd = Σz_pred - gain ** 2 * Σy_pred
+        z[1] = z_upd
+
+        for t in range(2, y.shape[0] + 1):
+            i = t - 1
+            # prediction step
+            z_pred = ρ * z_upd
+            Σz_pred = ρ ** 2 * Σz_upd + 1
+            y_pred = γ + η * z_pred
+            Σy_pred = η ** 2 * Σz_pred + σ ** 2
+
+            # correction step
+            gain = Σz_pred * η / Σy_pred
+            z_upd = z_pred + gain * (y[i] - y_pred)
+            Σz_upd = Σz_pred - gain ** 2 * Σy_pred
+            z[t - 1] = z_upd
+
+        return z
+
+    def forecast_paths(self, y, post, nsteps=10, ndraws=10_000):
+        # loop over posterior draws
+        # conditional on draw, obtain x_T draw
+        # project x_T+1, x_T+2, ..., x_T+h
+        N = len(y)
+        z_ext = torch.zeros([N + nsteps])
+        y_ext = torch.zeros([N + nsteps])
+        y_ext[:N] = y
+        fc_paths = torch.zeros([nsteps, ndraws])
+        is_mcmc_posterior = getattr(post, 'flatnames', None)
+        if is_mcmc_posterior:
+            mcmc_draws = post.extract()
+            flatnames = ['z0', 'sigma_z0', 'gamma', 'eta', 'sigma', 'rho']
+            param_draws = torch.stack([torch.tensor(mcmc_draws[n]) for n in flatnames])
+        for i in range(ndraws):
+            if is_mcmc_posterior:
+                # posterior is matrix of samples
+                params = param_draws[:, i % param_draws.shape[1]]
+            else:
+                params = post.q.sample()
+            z_ext[:N] = self.filtered_path(y, params)
+            # allow latent states z to evolve
+            z0, σz0, γ, η, σ, ρ, = params
+            # print([γ, η, σ, ρ])
+            for t in range(N, N + nsteps):
+                # draw z[t] | z[t-1]
+                z_ext[t] = z_ext[t - 1] * ρ + torch.normal(torch.zeros(1))
+            # sample conditionally indepedent ys
+            y_ext[N:] = torch.normal(γ + η * z_ext[N:], σ * torch.ones(nsteps))
+            fc_paths[:, i] = y_ext[N:]
+        return fc_paths

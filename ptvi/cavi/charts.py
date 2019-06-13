@@ -50,7 +50,7 @@ def fan_chart(
         median_line = [np.median(fc[x]) for x in range(N, N + steps)]
         ax.plot(x[N:], median_line, color="black", alpha=1, linewidth=2, label="Median")
     fan_xs = np.array(range(N, N + steps + 1))
-    quantiles = sorted([q for p in probs for q in [p / 2, 1 - p / 2]])
+    quantiles = sorted([q for p in probs for q in [0.5 * (1 - p), 0.5 * (1 + p)]])
     prob_list = probs + list(reversed(list(probs[:-1])))
     segments = zip(quantiles[:-1], quantiles[1:], prob_list)
     for bottom_prob, top_prob, segment_prob in segments:
@@ -146,6 +146,76 @@ def discrete_fan_chart(
                 discrete_hist_qtile(fc[x], q=bottom_prob, mode="floor")
                 for x in range(N, N + steps)
             ],
+        ]
+        ax.fill_between(
+            fan_xs, upper_y, lower_y, color="blue", alpha=alpha, label=label
+        )
+    if legend:
+        ax.legend()
+    if origin_line:
+        ax.axvline(x=N, color="black", linestyle=":", linewidth=1)
+    return fig
+
+
+def fan_chart_from_draws(
+    y,
+    fc,
+    ax=None,
+    probs=None,
+    start=None,
+    x=None,
+    origin_line=True,
+    legend=True,
+    **kwargs,
+):
+    """Plot a symmetric fan chart from a data series and forecast sequence.
+
+    Args:
+        y:      data series
+        fc:     numpy 2-array of forecast paths: periods in dimension 0 and 
+                draws in dimension 1
+        ax:     axis to plot on
+        start:  number of observation to start at (default: first)
+        probs:  quantiles of distribution to include in fan chart, where
+                0 = median line and 0.9 = central 90 per cent. Default
+                is [.9, .5, 0]
+        origin_line: if true, draw a black vertical line at the forecast origin.
+        legend: if true, render a chart legend
+
+    Returns:
+        Matplotlib chart object, if no axis given, or else None
+    """
+    fig = None
+    if not ax:
+        fig, ax = plt.subplots(1, 1, **kwargs)
+    N, steps = len(y), fc.shape[0]
+    if x:
+        assert len(x) == N + steps
+    else:
+        x = np.array(range(1, N + steps + 1))
+    if not start:
+        start = np.min(x)
+    ax.set_xlim([start, np.max(x)])
+    ax.plot(x[:N], y, color="black", alpha=1, linewidth=2)
+    if not probs:
+        probs = [0.9, 0.5, 0]
+    if 0 in probs:
+        probs = probs.copy()  # don't modify caller's list
+        probs.remove(0)
+        median_line = [y[-1]] + [np.median(fc[i, :]) for i in range(steps)]
+        ax.plot(x[(N-1):], median_line, color="black", alpha=1, linewidth=2, label="Median")
+    fan_xs = np.array(range(N, N + steps + 1))
+    quantiles = sorted([q for p in probs for q in [0.5 * (1 - p), 0.5 * (1 + p)]])
+    prob_list = probs + list(reversed(list(probs[:-1])))
+    segments = list(zip(quantiles[:-1], quantiles[1:], prob_list))
+    for bottom_prob, top_prob, segment_prob in segments:
+        alpha = 1 - segment_prob
+        label = f"{100*segment_prob:.0f}%" if top_prob > 0.5 else None
+        upper_y = np.r_[
+            y[-1], [np.percentile(fc[i, :], q=100*top_prob) for i in range(steps)]
+        ]
+        lower_y = np.r_[
+            y[-1], [np.percentile(fc[i, :], q=100*bottom_prob) for i in range(steps)]
         ]
         ax.fill_between(
             fan_xs, upper_y, lower_y, color="blue", alpha=alpha, label=label
