@@ -158,13 +158,12 @@ def stan_reg(y, X, mu_0, C_0, num_draws=10_000, chains=1, warmup=1_000):
 
 
 def mh_reg(
-    y, X, mu_0, C_0, num_draws=10_000, warmup=1_000, init_tune=1e-2,
-    thin=1, autotune=True
+    y, X, mu_0, C_0, num_draws=10_000, warmup=1_000, init_tune=1e-2, autotune=True
 ):
     """Fit a poisson regression using an adaptive Metropolis-Hastings algo.
 
-    The Gaussian proposal density has covariance C_0 * tune. Tune is adjusted 
-    each 100 steps during the warmup.
+    The Gaussian proposal density has covariance C_0 * tune. Tune is adjusted each
+    100 steps during the warmup.
 
     Args:
         y:         response variable
@@ -174,7 +173,6 @@ def mh_reg(
         num_draws: number of posterior draws
         warmup:    number of warmup iterations
         init_tune: initial tuning parameter value
-        thin:      thin draws by taking every `thin`th draw
         autotune:  if true, autotune during warmup
 
     Return:
@@ -202,8 +200,8 @@ def mh_reg(
         if autotune and in_warmup and i > autotune_s + 1 and i % autotune_s == 0:
             accept_rate = np.mean(
                 np.where(
-                    draws[i - autotune_s: i, 0] !=
-                    draws[i - autotune_s - 1: i - 1, 0],
+                    draws[i - autotune_s : i, 0]
+                    != draws[i - autotune_s - 1 : i - 1, 0],
                     1,
                     0,
                 )
@@ -227,15 +225,15 @@ def mh_reg(
             proposal = new_proposal
         draws[i, ] = beta
     end_t = time.perf_counter()
-    accept_rate = np.mean(np.where(draws[warmup + 1:, 0] != draws[warmup:-1, 0], 1, 0))
+    accept_rate = np.mean(np.where(draws[warmup + 1 :, 0] != draws[warmup:-1, 0], 1, 0))
     print(
         f"Time elapsed: {(end_t - start_t):.4f}s, "
         f"acceptance rate {100*accept_rate:.2f}%."
     )
-    return draws[range(warmup, num_draws, thin), :]
+    return draws[warmup:, :]
 
 
-def simulate_ar(N, beta, phi, X=None, rstate=None):
+def simulate_ar(N, beta, phi, X=None, c=1e-3, rstate=None):
     """Simulate from poisson AR(p) process.
 
     Args:
@@ -261,33 +259,33 @@ def simulate_ar(N, beta, phi, X=None, rstate=None):
     y = np.empty(shape=[N], dtype=np.float64)
     for i in range(N):
         for j in range(min(p, i)):  # autoregression contribution
-            eta[i] += phi[j] * np.log(1 + y[i - j - 1])
+            eta[i] += phi[j] * np.log(max(c, y[i - j - 1]))
         y[i] = rstate.poisson(np.exp(eta[i]))
     return y, X
 
 
-def ar_design_matrix(y, X, p):
+def ar_design_matrix(y, X, p, c=1e-3):
     """Construct an AR(p) design matrix by adding lags of log(y) to X.
 
     Also shortens y by p observations.
 
     Args:
-        y:       response vector
-        X:       contemporaneous explanatory variables
-        p:       Number of lags of log (1+y) to add
-        lambda0: initial value of lambda
+        y:  response vector
+        X:  contemporaneous explanatory variables
+        p:  Number of lags to add
+        c:  Threshold value to replace zeros with
 
     Returns:
         y, (N-p)*(p+k) design matrix
     """
-    lystar = np.log(1 + y)
+    lystar = np.log(np.maximum(y, c))
     y_lags = np.stack([lystar[p - i - 1 : -i - 1] for i in range(p)], axis=0).T
     X_ = np.block([X[p:, ], y_lags])
     y_ = y[p:]
     return (y_, X_)
 
 
-def forecast_arp(y, X, fit, p, steps, future_X=None, num_draws=10_000, rs=None):
+def forecast_arp(y, X, fit, p, steps, future_X=None, c=0.2, num_draws=10_000, rs=None):
     """Construct forecast by simulation.
 
     Forecasts are presented as histograms describing the forecast pmf.
@@ -299,6 +297,7 @@ def forecast_arp(y, X, fit, p, steps, future_X=None, num_draws=10_000, rs=None):
         fit:       inference results to use to construct forecast
         steps:     number of steps for forecast
         future_X:  covariate values to fix for forecast (use mean if None)
+        c:         threshold 0<c<1
         num_draws: number of simulation draws for forecast
         rs:        numpy random state
 
@@ -307,8 +306,7 @@ def forecast_arp(y, X, fit, p, steps, future_X=None, num_draws=10_000, rs=None):
     """
     if rs is None:
         rs = np.random.RandomState(seed=123)
-    if X.ndim == 1:
-        X = X.expand_dims(axis=1)
+    assert 0.0 < c < 1.0
     N, k = X.shape
     y_ext = np.r_[y, np.zeros(steps)]
     max_x = np.ceil(np.max(y) * 2).astype(int)
@@ -331,7 +329,7 @@ def forecast_arp(y, X, fit, p, steps, future_X=None, num_draws=10_000, rs=None):
                 x_hat = future_X[j, :]
             eta = x_hat @ beta
             for l in range(p):
-                eta += phi[l] * np.log(1 + y_ext[N + j - l - 1])
+                eta += phi[l] * np.log(max(c, y_ext[N + j - l - 1]))
             try:
                 y_hat = rs.poisson(lam=np.exp(eta))
             except ValueError:
@@ -353,7 +351,7 @@ def forecast_arp(y, X, fit, p, steps, future_X=None, num_draws=10_000, rs=None):
     return fcs
 
 
-def forecast_arp_pmfs(y, X, fit, p, steps, future_X=None, num_draws=10_000, rs=None):
+def forecast_arp_pmfs(y, X, fit, p, steps, future_X=None, c=0.2, num_draws=10_000, rs=None):
     """Construct forecast densities by simulation.
 
     Forecasts are presented as histograms describing the forecast pmf.
@@ -365,6 +363,7 @@ def forecast_arp_pmfs(y, X, fit, p, steps, future_X=None, num_draws=10_000, rs=N
         fit:       inference results to use to construct forecast
         steps:     number of steps for forecast
         future_X:  covariate values to fix for forecast (use mean if None)
+        c:         threshold 0<c<1
         num_draws: number of simulation draws for forecast
         rs:        numpy random state
 
@@ -373,6 +372,7 @@ def forecast_arp_pmfs(y, X, fit, p, steps, future_X=None, num_draws=10_000, rs=N
     """
     if rs is None:
         rs = np.random.RandomState(seed=123)
+    assert 0.0 < c < 1.0
     N, k = X.shape
     y_ext = np.r_[y, np.zeros(steps)]
     max_x = np.ceil(np.max(y) * 2).astype(int)
@@ -396,7 +396,7 @@ def forecast_arp_pmfs(y, X, fit, p, steps, future_X=None, num_draws=10_000, rs=N
                 x_hat = future_X[j, :]
             eta = x_hat @ beta
             for l in range(p):
-                eta += phi[l] * np.log(1 + y_ext[N + j - l - 1])
+                eta += phi[l] * np.log(max(c, y_ext[N + j - l - 1]))
             mus[j, i] = np.exp(eta)
             try:
                 y_hat = rs.poisson(lam=np.exp(eta))
@@ -456,6 +456,7 @@ def score_arp_forecasts(
         p:         autoregression order
         steps:     number of steps for forecast
         future_X:  covariate values to fix for forecast (use mean if None)
+        c:         threshold 0<c<1
         num_draws: number of simulation draws for forecast
         rs:        numpy random state
 
@@ -464,6 +465,7 @@ def score_arp_forecasts(
     """
     if rs is None:
         rs = np.random.RandomState(seed=123)
+    assert 0.0 < c < 1.0
     N, k = X.shape
     y_ext = np.r_[y, np.zeros(steps)]
     fc_scores = np.zeros([steps, len(fcs)])
@@ -474,7 +476,7 @@ def score_arp_forecasts(
                 x_hat = future_X[j, :]
             eta = x_hat @ beta
             for l in range(p):
-                eta += phi[l] * np.log(1 + y_ext[N + j - l - 1])
+                eta += phi[l] * np.log(max(c, y_ext[N + j - l - 1]))
             try:
                 y_hat = rs.poisson(lam=np.exp(eta))
             except ValueError:
@@ -490,7 +492,7 @@ def score_arp_forecasts(
 
 
 def score_arp_pmf_forecasts(
-    y, X, beta, phi, fcs, p, steps, future_X=None, num_draws=10_000, rs=None
+    y, X, beta, phi, fcs, p, steps, future_X=None, c=0.2, num_draws=10_000, rs=None
 ):
     """Score poisson AR(p) forecasts by simulation.
 
@@ -505,6 +507,7 @@ def score_arp_pmf_forecasts(
         p:         autoregression order
         steps:     number of steps for forecast
         future_X:  covariate values to fix for forecast (use mean if None)
+        c:         threshold 0<c<1
         num_draws: number of simulation draws for forecast
         rs:        numpy random state
 
@@ -513,6 +516,7 @@ def score_arp_pmf_forecasts(
     """
     if rs is None:
         rs = np.random.RandomState(seed=123)
+    assert 0.0 < c < 1.0
     N, k = X.shape
     y_ext = np.r_[y, np.zeros(steps)]
     fc_scores = np.zeros([steps, len(fcs)])
@@ -523,7 +527,7 @@ def score_arp_pmf_forecasts(
                 x_hat = future_X[j, :]
             eta = x_hat @ beta
             for l in range(p):
-                eta += phi[l] * np.log(1 + y_ext[N + j - l - 1])
+                eta += phi[l] * np.log(max(c, y_ext[N + j - l - 1]))
             try:
                 y_hat = rs.poisson(lam=np.exp(eta))
             except ValueError:

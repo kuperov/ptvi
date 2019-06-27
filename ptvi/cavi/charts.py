@@ -11,6 +11,7 @@ def fan_chart(
     x=None,
     origin_line=True,
     legend=True,
+    legend_loc="upper left",
     **kwargs,
 ):
     """Plot a symmetric fan chart from a data series and forecast sequence.
@@ -25,6 +26,7 @@ def fan_chart(
                 is [.9, .5, 0]
         origin_line: if true, draw a black vertical line at the forecast origin.
         legend: if true, render a chart legend
+        legend_loc: position of the legend
 
     Returns:
         Matplotlib chart object, if no axis given, or else None
@@ -66,7 +68,7 @@ def fan_chart(
             fan_xs, upper_y, lower_y, color="blue", alpha=alpha, label=label
         )
     if legend:
-        ax.legend()
+        ax.legend(loc=legend_loc)
     if origin_line:
         ax.axvline(x=N, color="black", linestyle=":", linewidth=1)
     return fig
@@ -81,6 +83,7 @@ def discrete_fan_chart(
     x=None,
     origin_line=True,
     legend=True,
+    legend_loc="upper left",
     **kwargs,
 ):
     """Plot a symmetric fan chart from a data series and discrete forecast sequence.
@@ -98,6 +101,7 @@ def discrete_fan_chart(
                 is [.9, .5, 0]
         origin_line: if true, draw a black vertical line at the forecast origin.
         legend: if true, render a chart legend
+        legend_loc: position of the legend
 
     Returns:
         Matplotlib chart object, if no axis given, or else None
@@ -119,39 +123,42 @@ def discrete_fan_chart(
     if not probs:
         probs = [0.9, 0.5, 0]
     fan_xs = np.array(range(N, N + steps + 1))
-    quantiles = sorted([q for p in probs for q in [(1 - p) / 2, 1 - (1 - p) / 2]])
+    quantiles = sorted([q for p in probs for q in [0.5 * (1 - p), 0.5 * (1 + p)]])
     prob_list = probs + list(reversed(list(probs[:-1])))
     segments = zip(quantiles[:-1], quantiles[1:], prob_list)
-    segments = []
-    for i in range(len(prob_list)):
-        segments.append((quantiles[i], quantiles[i + 1], prob_list[i]))
+    lower_mode = upper_mode = "floor"
     for bottom_prob, top_prob, segment_prob in segments:
         alpha = 1 - segment_prob
         if top_prob > 0.5:
             label = f"{100*segment_prob:.0f}%"
         elif segment_prob == 0.0:
             label = "Median"
+            upper_mode = "ceiling"  # above median, use ceiling; floor below
         else:
             label = None
         upper_y = np.r_[
             y[-1],
             [
-                discrete_hist_qtile(fc[x], q=top_prob, mode="ceiling")
+                discrete_hist_qtile(fc[x], q=top_prob, mode=upper_mode)
                 for x in range(N, N + steps)
             ],
         ]
         lower_y = np.r_[
             y[-1],
             [
-                discrete_hist_qtile(fc[x], q=bottom_prob, mode="floor")
+                discrete_hist_qtile(fc[x], q=bottom_prob, mode=lower_mode)
                 for x in range(N, N + steps)
             ],
         ]
         ax.fill_between(
             fan_xs, upper_y, lower_y, color="blue", alpha=alpha, label=label
         )
+        if segment_prob == 0.0:
+            # switching the lower mode after the plotting call allows median to 
+            # have ceiling for upper and floor for lower
+            lower_mode = "ceiling"  # above median, use ceiling; floor below
     if legend:
-        ax.legend()
+        ax.legend(loc=legend_loc)
     if origin_line:
         ax.axvline(x=N, color="black", linestyle=":", linewidth=1)
     return fig
@@ -166,6 +173,7 @@ def fan_chart_from_draws(
     x=None,
     origin_line=True,
     legend=True,
+    legend_loc="upper left",
     **kwargs,
 ):
     """Plot a symmetric fan chart from a data series and forecast sequence.
@@ -181,6 +189,7 @@ def fan_chart_from_draws(
                 is [.9, .5, 0]
         origin_line: if true, draw a black vertical line at the forecast origin.
         legend: if true, render a chart legend
+        legend_loc: position of the legend
 
     Returns:
         Matplotlib chart object, if no axis given, or else None
@@ -221,7 +230,7 @@ def fan_chart_from_draws(
             fan_xs, upper_y, lower_y, color="blue", alpha=alpha, label=label
         )
     if legend:
-        ax.legend()
+        ax.legend(loc=legend_loc)
     if origin_line:
         ax.axvline(x=N, color="black", linestyle=":", linewidth=1)
     return fig
@@ -263,12 +272,11 @@ def discrete_hist_qtile(hist, q, mode="floor"):
         Quantile (fractional bucket value) corresponding to q
     """
     assert 0.0 <= q <= 1.0
+    assert mode in ["floor", "ceiling"]
     if mode == "floor":
         return np.floor(hist_qtile(hist, q))
-    elif mode == "ceiling":
-        return np.ceil(hist_qtile(hist, q))
     else:
-        raise Exception(f'Unknown mode "{mode}".')
+        return np.ceil(hist_qtile(hist, q))
 
 
 def trace(arr, name="", title=None, **kwargs):
